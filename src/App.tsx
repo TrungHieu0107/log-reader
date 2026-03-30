@@ -17,14 +17,16 @@ function App() {
   const [pattern, setPattern] = useState<string>("");
   const [isTailing, setIsTailing] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [encoding, setEncoding] = useState<string>("auto");
 
-  const fetchPage = useCallback(async (path: string, pageNum: number) => {
+  const fetchPage = useCallback(async (path: string, pageNum: number, enc: string) => {
     setIsLoading(true);
     try {
       const chunk: LogChunk = await invoke("cmd_read_page", {
         path,
         page: pageNum,
         pageSize: PAGE_SIZE,
+        encoding: enc === "auto" ? null : enc,
       });
       setLines(chunk.lines);
       setTotalLines(chunk.total_lines);
@@ -40,12 +42,22 @@ function App() {
     setFilePath(path);
     setPattern("");
     setIsTailing(false);
-    await fetchPage(path, 0);
+    await fetchPage(path, 0, encoding);
+  };
+
+  const handleEncodingChange = async (newEnc: string) => {
+    setEncoding(newEnc);
+    if (!filePath) return;
+    if (isTailing) {
+      await invoke("cmd_stop_tail");
+      setIsTailing(false);
+    }
+    await fetchPage(filePath, page, newEnc);
   };
 
   const handleSearch = async () => {
     if (!filePath || !pattern) {
-      if (filePath) await fetchPage(filePath, 0);
+      if (filePath) await fetchPage(filePath, 0, encoding);
       return;
     }
     setIsLoading(true);
@@ -54,6 +66,7 @@ function App() {
         path: filePath,
         pattern,
         maxResults: 2000,
+        encoding: encoding === "auto" ? null : encoding,
       });
       setLines(filtered);
       setTotalLines(filtered.length);
@@ -72,10 +85,12 @@ function App() {
       await invoke("cmd_stop_tail");
       setIsTailing(false);
     } else {
-      setLines([]); // Clear before tailing to show only new lines or fetch a few last ones?
-      // Requirement: `tail_log` starts at end-of-file.
+      setLines([]); // Clear before tailing
       try {
-        await invoke("cmd_start_tail", { path: filePath });
+        await invoke("cmd_start_tail", { 
+          path: filePath,
+          encoding: encoding === "auto" ? null : encoding
+        });
         setIsTailing(true);
       } catch (err) {
         console.error("Failed to start tail:", err);
@@ -106,8 +121,10 @@ function App() {
         filePath={filePath}
         pattern={pattern}
         isTailing={isTailing}
+        encoding={encoding}
         onFileOpen={handleFileOpen}
         onPatternChange={setPattern}
+        onEncodingChange={handleEncodingChange}
         onSearch={handleSearch}
         onToggleTail={toggleTail}
       />
@@ -119,14 +136,14 @@ function App() {
           <div className="pagination-controls">
             <button
               disabled={page === 0 || isLoading}
-              onClick={() => fetchPage(filePath, page - 1)}
+              onClick={() => fetchPage(filePath, page - 1, encoding)}
             >
               Previous
             </button>
             <span>Page {page + 1} of {totalPages || 1}</span>
             <button
               disabled={page >= totalPages - 1 || isLoading}
-              onClick={() => fetchPage(filePath, page + 1)}
+              onClick={() => fetchPage(filePath, page + 1, encoding)}
             >
               Next
             </button>

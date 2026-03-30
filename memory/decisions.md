@@ -55,5 +55,11 @@ Mỗi decision ghi theo format:
 - **Alternatives considered**: None, đây là chuẩn bắt buộc của Tauri v2.
 - **Status**: Active
 
+### [2026-03-30] — Đọc file với Custom Encoding & Auto-Detect
+- **Decision**: Sử dụng `encoding_rs` phối hợp `chardetng` để Auto-Detect và thay thế `reader.read_line()` bằng `reader.read_until(b'\n')`.
+- **Reason**: Đọc file theo dạng byte thô rồi mới giải mã, giúp App xem được các file log cổ (như tiếng Nhật Shift-JIS, tiếng Việt Windows-1258).
+- **Alternatives considered**: Chỉ nhận UTF-8 và bỏ qua các lỗi kí tự (không giải quyết triệt để).
+- **Status**: Active
+
 ---
 <!-- Antigravity: append new decisions below this line -->

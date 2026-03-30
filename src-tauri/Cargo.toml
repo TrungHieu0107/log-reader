@@ -19,6 +19,8 @@ notify = "6"
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-clipboard-manager = "2"
+encoding_rs = "0.8.35"
+chardetng = "0.1.17"
 
 [features]
 # default enables devtools in debug builds, etc

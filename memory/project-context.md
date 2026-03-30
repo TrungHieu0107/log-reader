@@ -22,6 +22,8 @@ Log Reader
 | @tanstack/react-virtual | 3.x | Virtual scroll for log lines |
 | notify (Rust) | 6.x | File watcher for tail mode |
 | regex (Rust) | 1.x | Log line filtering |
+| encoding_rs (Rust) | 0.8.x | Đọc file mã hóa Text đa ngôn ngữ |
+| chardetng (Rust) | 0.1.x | Auto-detect File Encoding |
 
 ## Architecture Overview
 ```

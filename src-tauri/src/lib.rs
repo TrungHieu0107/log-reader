@@ -5,18 +5,18 @@ use tauri::Window;
 use std::sync::Mutex;
 
 #[tauri::command]
-fn cmd_read_page(path: String, page: usize, page_size: usize) -> Result<LogChunk, String> {
-    read_page(&path, page, page_size)
+fn cmd_read_page(path: String, page: usize, page_size: usize, encoding: Option<String>) -> Result<LogChunk, String> {
+    read_page(&path, page, page_size, encoding.as_deref())
 }
 
 #[tauri::command]
-fn cmd_filter_log(path: String, pattern: String, max_results: usize) -> Result<Vec<LogLine>, String> {
-    filter_log(&path, &pattern, max_results)
+fn cmd_filter_log(path: String, pattern: String, max_results: usize, encoding: Option<String>) -> Result<Vec<LogLine>, String> {
+    filter_log(&path, &pattern, max_results, encoding.as_deref())
 }
 
 #[tauri::command]
-fn cmd_start_tail(path: String, window: Window) -> Result<(), String> {
-    tail_log(path, window)
+fn cmd_start_tail(path: String, window: Window, encoding: Option<String>) -> Result<(), String> {
+    tail_log(path, window, encoding)
 }
 
 #[tauri::command]
