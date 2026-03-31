@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useConfigStore } from '../../components/configStore';
 import { useSqlLogStore } from './store';
-import { Settings, X, Type, LayoutList, CheckCircle2 } from 'lucide-react';
+import { Settings, X, Type, LayoutList, CheckCircle2, HelpCircle, Info } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -14,13 +14,15 @@ export function SettingsModal({ isOpen, onClose }: Props) {
 
   const [localSingleLine, setLocalSingleLine] = useState(config.sqlSingleLine);
   const [localTrim, setLocalTrim] = useState(config.trimSql);
+  const [localPageSize, setLocalPageSize] = useState(config.pageSize);
 
   useEffect(() => {
     if (isOpen) {
       setLocalSingleLine(config.sqlSingleLine);
       setLocalTrim(config.trimSql);
+      setLocalPageSize(config.pageSize);
     }
-  }, [isOpen, config.sqlSingleLine, config.trimSql]);
+  }, [isOpen, config.sqlSingleLine, config.trimSql, config.pageSize]);
 
   if (!isOpen) return null;
 
@@ -29,8 +31,11 @@ export function SettingsModal({ isOpen, onClose }: Props) {
     
     config.updateConfig({
       sqlSingleLine: localSingleLine,
-      trimSql: localTrim
+      trimSql: localTrim,
+      pageSize: localPageSize
     });
+
+    store.setPageSize(localPageSize);
 
     // If trimming was toggled, we should re-parse the active file immediately
     if (isTrimChanged && store.activeFilePath) {
@@ -59,7 +64,7 @@ export function SettingsModal({ isOpen, onClose }: Props) {
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
           {/* SQL Display Mode */}
           <div className="space-y-3">
              <div className="flex items-center text-gray-300 font-medium">
@@ -76,6 +81,28 @@ export function SettingsModal({ isOpen, onClose }: Props) {
                 >
                   <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${localSingleLine ? 'translate-x-6' : ''}`} />
                 </button>
+             </div>
+          </div>
+
+          {/* Pagination Settings */}
+          <div className="space-y-3">
+             <div className="flex items-center text-gray-300 font-medium">
+               <LayoutList size={16} className="mr-2" /> Pagination & Performance
+             </div>
+             <div className="bg-[#1E1E1E] p-4 rounded border border-[#3C3C3D] flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium">Records per page</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Adjust for optimal responsiveness</div>
+                </div>
+                <select 
+                  className="bg-[#3C3C3C] border border-[#454545] rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 ring-blue-500"
+                  value={localPageSize}
+                  onChange={(e) => setLocalPageSize(Number(e.target.value))}
+                >
+                  {[50, 100, 200, 500, 1000].map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
              </div>
           </div>
 
@@ -102,6 +129,49 @@ export function SettingsModal({ isOpen, onClose }: Props) {
                  <span>This preserves whitespace inside single-quoted literals ('...').</span>
                </div>
              )}
+          </div>
+
+          {/* User Guide Section */}
+          <div className="space-y-3">
+             <div className="flex items-center text-gray-300 font-medium">
+               <HelpCircle size={16} className="mr-2" /> User Guide & Tips
+             </div>
+             <div className="bg-[#1E1E1E] rounded border border-[#3C3C3D] overflow-hidden">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-[#2A2D2E] border-b border-[#3C3C3D] text-gray-400 uppercase tracking-tighter">
+                      <th className="px-3 py-2 font-black">Feature</th>
+                      <th className="px-3 py-2 font-black">How to use / Shortcut</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#3C3C3D] text-gray-300">
+                    <tr>
+                      <td className="px-3 py-2.5 font-bold text-blue-400">Loading</td>
+                      <td className="px-3 py-2.5 opacity-80">Click <span className="bg-[#333] px-1 rounded font-mono text-white inline-block border border-[#444]">+</span> to paste absolute paths directly.</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2.5 font-bold text-blue-400">Regex</td>
+                      <td className="px-3 py-2.5 opacity-80">Enable <span className="italic font-bold text-purple-400">Regex mode</span> for complex pattern matching (case-insensitive).</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2.5 font-bold text-blue-400">Orphans</td>
+                      <td className="px-3 py-2.5 opacity-80">Amber warning banner shows params without parent SQL. Click <span className="underline">Show orphans</span>.</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2.5 font-bold text-blue-400">Formatter</td>
+                      <td className="px-3 py-2.5 opacity-80">Click on any <span className="font-mono text-orange-200">Reconstructed SQL</span> to open the Pretty Formatter.</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2.5 font-bold text-blue-400">Sorting</td>
+                      <td className="px-3 py-2.5 opacity-80">Switch between <span className="font-bold whitespace-nowrap">Newest First</span> and <span className="font-bold whitespace-nowrap">Oldest First</span> using the toggle.</td>
+                    </tr>
+                  </tbody>
+                </table>
+             </div>
+             <div className="flex items-center gap-2 px-1 text-[10px] text-gray-500 italic">
+                <Info size={12} className="shrink-0" />
+                <span>Tip: Hover over DAO names or file paths to see the full content.</span>
+             </div>
           </div>
         </div>
 

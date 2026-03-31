@@ -5,11 +5,17 @@ import { DaoSession, parseSqlLogs } from './parser';
 import { useConfigStore } from '../../components/configStore';
 import { FileReadResponse } from '../../types/tauri';
 
+export type FilterType = 'query' | 'dao' | 'time' | 'time_range';
+
+export type FilterOperator = 'contains' | 'not_contains' | 'equals' | 'not_equals' | 'greater_than' | 'less_than';
+
 export interface Filter {
   id: string;
-  type: 'query' | 'dao' | 'time';
-  operator: 'contains' | 'not_contains' | 'equals' | 'not_equals' | 'greater_than' | 'less_than';
+  type: FilterType;
+  operator: FilterOperator;
   value: string;
+  valueTo?: string;
+  isRegex?: boolean;
 }
 
 export interface LogFile {
@@ -26,6 +32,7 @@ interface SqlLogState {
   sortOrder: 'asc' | 'desc';
   page: number;
   pageSize: number;
+  isParsing: boolean;
   
   // Modals state
   isFilterModalOpen: boolean;
@@ -40,8 +47,11 @@ interface SqlLogState {
   setAlias: (path: string, alias: string) => void;
   clearAllFiles: () => void;
   setPage: (page: number) => void;
+  setPageSize: (size: number) => void;
+  setParsing: (isParsing: boolean) => void;
+  setSessions: (path: string, sessions: DaoSession[]) => void;
   
-  addFilter: (type: Filter['type'], operator: Filter['operator'], value: string) => void;
+  addFilter: (type: Filter['type'], operator: Filter['operator'], value: string, isRegex?: boolean, valueTo?: string) => void;
   removeFilter: (id: string) => void;
   clearAllFilters: () => void;
   toggleSortOrder: () => void;
@@ -62,7 +72,8 @@ export const useSqlLogStore = create<SqlLogState>((set, get) => ({
   filters: [],
   sortOrder: 'desc',
   page: 1,
-  pageSize: 100,
+  pageSize: useConfigStore.getState().pageSize,
+  isParsing: false,
 
   isFilterModalOpen: false,
   selectedSql: '',
@@ -70,20 +81,44 @@ export const useSqlLogStore = create<SqlLogState>((set, get) => ({
   aliasModalProps: null,
 
   addFile: (path: string, content: string, detectedEncoding?: string) => {
-    const trimEnabled = useConfigStore.getState().trimSql;
-    const sessions = parseSqlLogs(content, { trimSql: trimEnabled });
+    const config = useConfigStore.getState();
+    const { setParsing, setSessions } = get();
+
+    setParsing(true);
     set((state) => {
       const existing = state.files.find(f => f.path === path);
-      let newFiles: LogFile[];
-      if (existing) {
-        newFiles = state.files.map(f => f.path === path ? { ...f, sessions, detectedEncoding } : f);
-      } else {
-        newFiles = [...state.files, { path, sessions, detectedEncoding }];
-      }
+      if (existing) return { activeFilePath: path, page: 1 };
+      
+      const newFiles = [...state.files, { path, sessions: [], detectedEncoding }];
       db.set('savedFiles', newFiles.map(f => ({ path: f.path, alias: f.alias })));
       db.save();
       return { files: newFiles, activeFilePath: path, page: 1 };
     });
+
+    const worker = new Worker(new URL('./parser.worker.ts', import.meta.url), { type: 'module' });
+    
+    worker.postMessage({ 
+      content, 
+      options: { trimSql: config.trimSql },
+      initialLimit: config.pageSize 
+    });
+
+    worker.onmessage = (e) => {
+      const { type, sessions } = e.data;
+      if (type === 'partial' || type === 'done') {
+        setSessions(path, sessions);
+      }
+      if (type === 'done') {
+        setParsing(false);
+        worker.terminate();
+      }
+    };
+
+    worker.onerror = (err) => {
+      console.error("Worker error:", err);
+      setParsing(false);
+      worker.terminate();
+    };
   },
   removeFile: (path: string) => {
     set((state) => {
@@ -113,10 +148,27 @@ export const useSqlLogStore = create<SqlLogState>((set, get) => ({
   },
 
   setPage: (page: number) => set({ page }),
+  setPageSize: (size: number) => set({ pageSize: size, page: 1 }),
+  setParsing: (isParsing: boolean) => set({ isParsing }),
+  setSessions: (path: string, sessions: DaoSession[]) => {
+    set((state) => {
+      const newFiles = state.files.map(f => f.path === path ? { ...f, sessions } : f);
+      db.set('savedFiles', newFiles.map(f => ({ path: f.path, alias: f.alias })));
+      db.save();
+      return { files: newFiles };
+    });
+  },
 
-  addFilter: (type: Filter['type'], operator: Filter['operator'], value: string) => {
+  addFilter: (type, operator, value, isRegex, valueTo) => {
     set((state) => ({
-      filters: [...state.filters, { id: Date.now().toString(), type, operator, value }],
+      filters: [...state.filters, { 
+        id: crypto.randomUUID(), 
+        type, 
+        operator, 
+        value, 
+        isRegex: isRegex ?? false,
+        valueTo 
+      }],
       page: 1
     }));
   },
@@ -136,19 +188,42 @@ export const useSqlLogStore = create<SqlLogState>((set, get) => ({
   reloadFiles: async (encoding: string) => {
     const saved = await db.get<{path: string, alias?: string}[]>('savedFiles') || [];
     const loadedFiles: LogFile[] = [];
-    const trimEnabled = useConfigStore.getState().trimSql;
+    set({ files: [], isParsing: true });
+
     for (const f of saved) {
       try {
         const res: FileReadResponse = await invoke('read_file_encoded', {
           path: f.path, encoding
         });
         if (res.content) {
+          // Initialize empty record
           loadedFiles.push({ 
             path: f.path, 
             alias: f.alias, 
-            sessions: parseSqlLogs(res.content, { trimSql: trimEnabled }),
+            sessions: [],
             detectedEncoding: res.detected_encoding || undefined
           });
+          
+          // Trigger worker for this file
+          const config = useConfigStore.getState();
+          const worker = new Worker(new URL('./parser.worker.ts', import.meta.url), { type: 'module' });
+          worker.postMessage({ 
+            content: res.content, 
+            options: { trimSql: config.trimSql },
+            initialLimit: config.pageSize 
+          });
+          worker.onmessage = (e) => {
+            if (e.data.type === 'partial' || e.data.type === 'done') {
+              set((state) => ({
+                files: state.files.map(file => file.path === f.path ? { ...file, sessions: e.data.sessions } : file)
+              }));
+            }
+            if (e.data.type === 'done') {
+              worker.terminate();
+              // Check if all workers are done (approximate)
+              set((state) => ({ isParsing: state.files.some(file => file.sessions.length === 0) }));
+            }
+          };
         }
       } catch (err) {
         console.error("Failed to load: " + f.path);

@@ -81,3 +81,21 @@ Mỗi decision ghi theo format:
 - **Reason**: Standard desktop app UX — users expect their layout to be remembered.
 - **Alternatives considered**: Tauri Store (overhead for simple UI bits).
 - **Status**: Active
+
+### [2026-03-31] — Advanced Filtering (Regex & Time Range)
+- **Decision**: Added `isRegex` for Query types and a dedicated `time_range` filter type using dual `input type="time"`.
+- **Reason**: Users need flexible pattern matching (Regex) and precise time-slice analysis (Time Range) for deep troubleshooting.
+- **Alternatives considered**: Backend-only regex (too slow for real-time validation), manual time string entry (error-prone).
+- **Status**: Active
+
+### [2026-03-31] — Three-Pass Orphan Detection
+- **Decision**: Updated `parser.ts` to implement a "third pass" that marks params-only logs without SQL as `orphan_params`.
+- **Reason**: Identifies incomplete log captures or log rotations, which are critical for debugging missing queries.
+- **Alternatives considered**: Discard orphans (hides data), merge with 'sql' type (misleading).
+- **Status**: Active
+
+### [2026-03-31] — Client-Side Regex Validation
+- **Decision**: Added real-time `new RegExp()` validation in `FilterModal.tsx`.
+- **Reason**: Prevents application crashes and provides immediate feedback if the user types an invalid regex pattern.
+- **Alternatives considered**: Only validating on 'Add' (worse UX).
+- **Status**: Active

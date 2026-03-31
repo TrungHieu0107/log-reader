@@ -5,6 +5,7 @@ interface ConfigState {
   encoding: string;
   sqlSingleLine: boolean;
   trimSql: boolean;
+  pageSize: number;
   updateConfig: (config: Partial<ConfigState>) => void;
   loadConfig: () => Promise<void>;
 }
@@ -15,6 +16,7 @@ export const useConfigStore = create<ConfigState>((set) => ({
   encoding: 'Auto',
   sqlSingleLine: false,
   trimSql: false,
+  pageSize: 100,
   updateConfig: (config) => {
     set((state) => {
       const newState = { ...state, ...config };

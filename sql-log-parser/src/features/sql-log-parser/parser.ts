@@ -1,10 +1,12 @@
 export interface LogEntry {
   logIndex: number;
   timestamp: string;
-  type: 'sql' | 'other';
+  type: 'sql' | 'other' | 'orphan_params';
   rawLine: string;
   reconstructedSql?: string;
   daoName?: string;
+  id?: string;
+  paramsString?: string;
 }
 
 export interface DaoSession {
@@ -27,6 +29,8 @@ export function parseSqlLogs(content: string, options: { trimSql?: boolean } = {
 
     // Local state to link SQL with Parameters via id
     const activeSqls = new Map<string, string>();
+    // Global map to check for orphans in third pass
+    const globalSqlMap = new Map<string, string>();
 
     lines.forEach((line, index) => {
         // 1. Timestamp extraction (YYYY-MM-DD HH:mm:ss)
@@ -66,6 +70,7 @@ export function parseSqlLogs(content: string, options: { trimSql?: boolean } = {
                 sqlText = trimSqlOutsideQuotes(sqlText);
             }
             activeSqls.set(id, sqlText);
+            globalSqlMap.set(id.toLowerCase(), sqlText);
         }
 
         // 4. Parameter Detection & Reconstruction
@@ -75,6 +80,9 @@ export function parseSqlLogs(content: string, options: { trimSql?: boolean } = {
             const id = paramMatch[1];
             const pstr = paramMatch[2].trim();
             const rawSql = activeSqls.get(id);
+            
+            log.id = id;
+            log.paramsString = pstr;
 
             if (rawSql) {
                 // Parse params like [TYPE:INDEX:VALUE]
@@ -101,6 +109,20 @@ export function parseSqlLogs(content: string, options: { trimSql?: boolean } = {
 
         currentSession.logs.push(log);
     });
+
+    // THIRD PASS: mark orphan params entries
+    for (const session of sessions) {
+        for (const log of session.logs) {
+            if (
+                log.paramsString !== undefined &&
+                log.reconstructedSql === undefined &&
+                log.id &&
+                !globalSqlMap.has(log.id.trim().toLowerCase())
+            ) {
+                log.type = 'orphan_params';
+            }
+        }
+    }
 
     return sessions;
 }

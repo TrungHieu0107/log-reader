@@ -27,6 +27,12 @@ export function useSqlLogs(
     if (filters.length > 0) {
       logs = logs.filter(log => {
         return filters.every(f => {
+          // Feature 2: Time Range is handled separately
+          if (f.type === 'time_range' && f.valueTo) {
+            const ts = (log.timestamp || '').slice(11, 19); // HH:MM:SS
+            return ts >= f.value && ts <= f.valueTo;
+          }
+
           let textValue = '';
           if (f.type === 'query') textValue = log.reconstructedSql || '';
           if (f.type === 'dao')   textValue = log.daoName;
@@ -36,13 +42,31 @@ export function useSqlLogs(
           const search = f.value.toLowerCase();
           
           switch (f.operator) {
+            case 'contains':
+            default:
+              if (f.isRegex && f.type === 'query') {
+                try {
+                  return new RegExp(f.value, 'i').test(textValue);
+                } catch {
+                  return false;
+                }
+              }
+              return target.includes(search);
+
+            case 'not_contains':
+              if (f.isRegex && f.type === 'query') {
+                try {
+                  return !new RegExp(f.value, 'i').test(textValue);
+                } catch {
+                  return true;
+                }
+              }
+              return !target.includes(search);
+
             case 'equals':       return target === search;
             case 'not_equals':   return target !== search;
             case 'greater_than': return target > search;
             case 'less_than':    return target < search;
-            case 'not_contains': return !target.includes(search);
-            case 'contains':
-            default:             return target.includes(search);
           }
         });
       });

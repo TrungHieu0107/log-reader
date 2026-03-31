@@ -9,7 +9,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   FolderOpen, RefreshCw, Filter, ArrowDownUp, 
-  Copy, Check, Database, FileText, ChevronLeft, ChevronRight, X, Settings, Plus
+  Copy, Check, Database, FileText, ChevronLeft, ChevronRight, X, Settings, Plus, Clock
 } from 'lucide-react';
 import { SettingsModal } from './SettingsModal';
 import { PathModal } from './PathModal';
@@ -18,6 +18,16 @@ import { PathModal } from './PathModal';
 import { useSqlLogs } from './useSqlLogs';
 import { useFileOpen } from './useFileOpen';
 import { FileReadResponse } from '../../types/tauri';
+import { FilterOperator } from './store';
+
+function operatorSymbol(op: FilterOperator): string {
+  const map: Record<FilterOperator, string> = {
+    contains: 'in', not_contains: 'not in',
+    equals: '==', not_equals: '!=',
+    greater_than: '>', less_than: '<'
+  };
+  return map[op] ?? op;
+}
 
 export function SqlLogParser() {
   const store = useSqlLogStore();
@@ -36,6 +46,9 @@ export function SqlLogParser() {
   
   // 4.1 Error Toast State
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  // Feature 3: Orphan Params State
+  const [showOrphans, setShowOrphans] = useState(false);
   
   // Modals & Menu
   const [contextMenu, setContextMenu] = useState<{ path: string, x: number, y: number } | null>(null);
@@ -164,12 +177,32 @@ export function SqlLogParser() {
 
   const totalPages = Math.ceil(allFilteredLogs.length / store.pageSize);
 
+  // Feature 3: Orphan Detection & Merging
+  const { orphanLogs, orphanCount } = useMemo(() => {
+    if (!activeFile) return { orphanLogs: [], orphanCount: 0 };
+    
+    const orphans = activeFile.sessions.flatMap(sess =>
+      sess.logs
+        .filter(l => l.type === 'orphan_params')
+        .map(l => ({ ...l, daoName: sess.daoName, isOrphan: true }))
+    ).sort((a, b) => a.logIndex - b.logIndex);
+
+    return { 
+      orphanLogs: showOrphans ? orphans : [], 
+      orphanCount: orphans.length 
+    };
+  }, [activeFile, showOrphans]);
+
+  const displayLogs = useMemo(() => {
+    return [...visibleLogs, ...orphanLogs];
+  }, [visibleLogs, orphanLogs]);
+
   // 2. Virtual Scroll Implementation
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
-    count: visibleLogs.length,
+    count: displayLogs.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 60,
+    estimateSize: () => 56,
     overscan: 10,
   });
 
@@ -310,9 +343,24 @@ export function SqlLogParser() {
             </div>
             
             <div className="flex items-center space-x-3">
-              <span className="text-[11px] bg-blue-600/10 text-blue-400 border border-blue-400/20 px-2 py-0.5 rounded font-mono">
-                {allFilteredLogs.length} Records
-              </span>
+              <div className="text-[11px] text-gray-400 bg-[#1e1e1e] px-2 py-1 rounded border border-[#3C3C3D] flex items-center gap-1.5 shadow-inner min-w-[120px]">
+                {store.isParsing ? (
+                  <>
+                    <RefreshCw size={12} className="animate-spin text-blue-400" />
+                    <span className="text-blue-400 font-bold animate-pulse">Parsing...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                    <span className="text-gray-300 font-bold">{allFilteredLogs.length} SQL Queries</span>
+                  </>
+                )}
+                {orphanCount > 0 && (
+                  <span className="text-amber-500/80 text-[10px] ml-1 px-1.5 bg-amber-500/10 rounded">
+                    + {orphanCount} orphan
+                  </span>
+                )}
+              </div>
               <button 
                 className="flex items-center px-3 py-1 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow disabled:opacity-50 transition-all font-medium"
                 onClick={() => store.setFilterModalOpen(true)}
@@ -338,24 +386,57 @@ export function SqlLogParser() {
             </div>
           </div>
 
+          {/* Feature 3: Orphan Warning Banner */}
+          {orphanCount > 0 && activeFile && (
+            <div className="flex items-center gap-3 px-4 py-1.5 bg-amber-900/10 border-b border-amber-700/20">
+              <span className="text-amber-500/70 text-[11px] flex items-center gap-2">
+                <Plus size={14} className="rotate-45" />
+                {orphanCount} params log{orphanCount > 1 ? 's' : ''} found without matching SQL statement.
+              </span>
+              <button
+                onClick={() => setShowOrphans(prev => !prev)}
+                className="ml-auto text-[10px] text-amber-500 hover:text-amber-400 font-bold uppercase tracking-wider underline underline-offset-4"
+              >
+                {showOrphans ? 'Hide' : 'Show'} orphans
+              </button>
+            </div>
+          )}
+
           {store.filters.length > 0 && store.activeFilePath && (
-            <div className="flex items-center bg-[#1E1E1E] px-4 py-2 border-b border-[#3C3C3D] overflow-x-auto space-x-2 scrollbar-hide">
-              <span className="text-[10px] uppercase font-bold text-gray-500 mr-2 flex-shrink-0">Active Filters:</span>
+            <div className="flex items-center bg-[#1E1E1E] px-4 py-2 border-b border-[#3C3C3D] overflow-x-auto gap-2 scrollbar-hide">
+              <span className="text-[10px] uppercase font-bold text-gray-500 mr-1 flex-shrink-0">Filters:</span>
               {store.filters.map(f => (
-                <div key={f.id} className="flex items-center bg-[#3C3C3C] text-[11px] px-2 py-0.5 rounded border border-[#444] shadow-sm">
-                  <span className="text-blue-400 mr-1 opacity-80">{f.type}:</span>
-                  <span className="font-mono text-gray-200">{f.value}</span>
-                  <button onClick={() => store.removeFilter(f.id)} className="ml-1.5 hover:text-white text-gray-500">
+                <div key={f.id} className="flex items-center gap-1.5 bg-blue-600/10 border border-blue-500/30 text-blue-400 px-2 py-0.5 rounded-full text-[11px] font-medium group transition-all hover:border-blue-500/50 shadow-sm">
+                  {f.isRegex && (
+                    <span className="bg-purple-600/20 text-purple-400 text-[8px] font-black px-1 rounded uppercase tracking-tighter leading-none border border-purple-500/30">
+                      regex
+                    </span>
+                  )}
+                  {f.type === 'time_range' ? (
+                    <>
+                      <Clock className="w-3 h-3 opacity-60"/>
+                      <span className="opacity-60 text-[9px] uppercase font-black tracking-tight">time:</span>
+                      <span className="font-mono text-xs">{f.value} → {f.valueTo}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="opacity-60 text-[9px] uppercase font-black tracking-tight">
+                        {f.type} {operatorSymbol(f.operator)}:
+                      </span>
+                      <span className="max-w-[120px] truncate font-mono text-xs">{f.value}</span>
+                    </>
+                  )}
+                  <button onClick={() => store.removeFilter(f.id)} className="opacity-40 group-hover:opacity-100 hover:text-white transition-opacity">
                     <X size={12}/>
                   </button>
                 </div>
               ))}
               <div className="flex-1" />
               <button 
-                className="text-xs text-gray-500 hover:text-red-400 transition-colors"
+                className="text-[10px] uppercase font-black text-gray-600 hover:text-red-500 transition-colors tracking-widest px-2"
                 onClick={() => store.clearAllFilters()}
               >
-                Reset All
+                Reset
               </button>
             </div>
           )}
@@ -384,8 +465,35 @@ export function SqlLogParser() {
             ) : (
               <div style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
                 {virtualizer.getVirtualItems().map((vRow) => {
-                  const log = visibleLogs[vRow.index];
+                  const log = displayLogs[vRow.index];
                   if (!log) return null;
+
+                  if (log.type === 'orphan_params') {
+                    return (
+                      <div
+                        key={vRow.key}
+                        data-index={vRow.index}
+                        ref={virtualizer.measureElement}
+                        className="absolute top-0 left-0 w-full flex border-b border-amber-900/30 bg-amber-950/10 items-stretch opacity-80 group hover:bg-amber-950/20 transition-colors"
+                        style={{ transform: `translateY(${vRow.start}px)`, minHeight: 48 }}
+                      >
+                        <div className="w-[160px] flex-shrink-0 px-4 py-3 text-[11px] text-gray-500 font-mono border-r border-[#2d2d2d] flex items-center">
+                          {log.timestamp || '--'}
+                        </div>
+                        <div className="w-[200px] flex-shrink-0 px-4 py-3 text-[12px] text-amber-500/60 font-bold border-r border-[#2d2d2d] flex items-center truncate">
+                          {log.daoName}
+                        </div>
+                        <div className="flex-1 px-4 py-3 text-[12px] text-amber-300/60 font-mono border-r border-[#2d2d2d] flex items-center overflow-hidden">
+                          <span className="text-[9px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded mr-3 uppercase font-black tracking-tighter shrink-0 border border-amber-500/30">
+                            Orphan Params
+                          </span>
+                          <span className="break-all truncate opacity-60">id={log.id} params={log.paramsString}</span>
+                        </div>
+                        <div className="w-[80px] flex-shrink-0"/>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div
                       key={vRow.key}
@@ -394,19 +502,19 @@ export function SqlLogParser() {
                       className="absolute top-0 left-0 w-full flex border-b border-[#2C2C2D] group hover:bg-[#2A2D2E] transition-colors items-stretch"
                       style={{ transform: `translateY(${vRow.start}px)`, minHeight: 48 }}
                     >
-                      <div className="w-[160px] pl-4 py-2 font-mono text-[11px] text-gray-500 flex-shrink-0">
+                      <div className="w-[160px] pl-4 py-2 font-mono text-[11px] text-gray-500 flex-shrink-0 flex items-center">
                         {log.timestamp}
                       </div>
-                      <div className="w-[200px] px-2 py-2 text-sm text-[#4ECAEA] truncate flex-shrink-0" title={log.daoName}>
+                      <div className="w-[200px] px-2 py-2 text-sm text-[#4ECAEA] truncate flex-shrink-0 flex items-center font-semibold" title={log.daoName}>
                         {log.daoName}
                       </div>
                       <div 
-                        className={`flex-1 px-2 py-2 font-mono text-xs text-[#CE9178] cursor-pointer hover:underline underline-offset-2 overflow-hidden ${config.sqlSingleLine ? 'whitespace-nowrap truncate' : 'whitespace-pre-wrap break-all'}`}
+                        className={`flex-1 px-2 py-2 font-mono text-xs text-[#CE9178] cursor-pointer hover:bg-[#333]/30 transition-all rounded m-1 overflow-hidden flex items-center ${config.sqlSingleLine ? 'whitespace-nowrap truncate' : 'whitespace-pre-wrap break-all'}`}
                         onClick={() => store.setFormatterModalOpen(true, log.reconstructedSql)}
                       >
                         {log.reconstructedSql}
                       </div>
-                      <div className="w-[80px] flex justify-center py-2 flex-shrink-0">
+                      <div className="w-[80px] flex justify-center py-2 flex-shrink-0 items-center">
                         <button 
                           onClick={() => copySql(log.reconstructedSql || '', log.logIndex)}
                           className={`p-1.5 rounded transition-all h-8 w-8 flex items-center justify-center ${copiedId === log.logIndex ? 'text-green-400 bg-green-400/10' : 'text-gray-600 opacity-0 group-hover:opacity-100 hover:bg-[#3A3D41] hover:text-white'}`}
