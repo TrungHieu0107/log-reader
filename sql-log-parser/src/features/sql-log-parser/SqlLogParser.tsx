@@ -5,7 +5,6 @@ import { StatusBar } from '../../components/StatusBar';
 import { FilterModal } from './FilterModal';
 import { AliasModal } from './AliasModal';
 import { SqlFormatterModal } from './SqlFormatterModal';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   FolderOpen, RefreshCw, Filter, ArrowDownUp, 
@@ -237,14 +236,8 @@ export function SqlLogParser() {
     return [...visibleLogs, ...orphanLogs];
   }, [visibleLogs, orphanLogs]);
 
-  // 2. Virtual Scroll Implementation
+  // 2. Virtual Scroll (Removed - using direct paging)
   const parentRef = useRef<HTMLDivElement>(null);
-  const virtualizer = useVirtualizer({
-    count: displayLogs.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 56,
-    overscan: 10,
-  });
 
   // 3.2 Copy Timeout with useRef
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -495,7 +488,7 @@ export function SqlLogParser() {
                 <p className="text-lg">Open a log file to extract SQL queries</p>
               </div>
             ) : allFilteredLogs.length === 0 ? (
-               <div className="flex flex-col items-center justify-center h-full text-gray-500 opacity-40 space-y-3">
+              <div className="flex flex-col items-center justify-center h-full text-gray-500 opacity-40 space-y-3">
                 <Database size={48} />
                 <div className="text-center">
                   <p className="text-lg font-medium">No results found</p>
@@ -503,19 +496,14 @@ export function SqlLogParser() {
                 </div>
               </div>
             ) : (
-              <div style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
-                {virtualizer.getVirtualItems().map((vRow) => {
-                  const log = displayLogs[vRow.index];
-                  if (!log) return null;
-
+              <div className="flex flex-col">
+                {displayLogs.map((log, index) => {
                   if (log.type === 'orphan_params') {
                     return (
                       <div
-                        key={vRow.key}
-                        data-index={vRow.index}
-                        ref={virtualizer.measureElement}
-                        className="absolute top-0 left-0 w-full flex border-b border-amber-900/30 bg-amber-950/10 items-stretch opacity-80 group hover:bg-amber-950/20 transition-colors"
-                        style={{ transform: `translateY(${vRow.start}px)`, minHeight: 48 }}
+                        key={`orphan-${log.id}-${index}`}
+                        className="flex border-b border-amber-900/30 bg-amber-950/10 items-stretch opacity-80 group hover:bg-amber-950/20 transition-colors py-1"
+                        style={{ minHeight: 48 }}
                       >
                         <div className="w-[160px] flex-shrink-0 px-4 py-3 text-[11px] text-gray-500 font-mono border-r border-[#2d2d2d] flex items-center">
                           {log.timestamp || '--'}
@@ -536,11 +524,9 @@ export function SqlLogParser() {
 
                   return (
                     <div
-                      key={vRow.key}
-                      data-index={vRow.index}
-                      ref={virtualizer.measureElement}
-                      className="absolute top-0 left-0 w-full flex border-b border-[#2C2C2D] group hover:bg-[#2A2D2E] transition-colors items-stretch"
-                      style={{ transform: `translateY(${vRow.start}px)`, minHeight: 48 }}
+                      key={`log-${log.logIndex}-${index}`}
+                      className="flex border-b border-[#2C2C2D] group hover:bg-[#2A2D2E] transition-colors items-stretch py-1"
+                      style={{ minHeight: 48 }}
                     >
                       <div className="w-[160px] pl-4 py-2 font-mono text-[11px] text-gray-500 flex-shrink-0 flex items-center">
                         {log.timestamp}
