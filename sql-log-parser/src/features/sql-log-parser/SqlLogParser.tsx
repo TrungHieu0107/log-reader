@@ -549,7 +549,7 @@ export function SqlLogParser() {
                         {log.daoName}
                       </div>
                       <div 
-                        className={`flex-1 px-2 py-2 font-mono text-xs text-[#CE9178] cursor-pointer hover:bg-[#333]/30 transition-all rounded m-1 overflow-hidden flex items-center ${config.sqlSingleLine ? 'whitespace-nowrap truncate' : 'whitespace-pre-wrap break-all'}`}
+                        className={`flex-1 px-2 py-2 font-mono text-xs text-[#CE9178] cursor-pointer hover:bg-[#333]/30 transition-all rounded m-1 overflow-x-auto custom-scrollbar flex items-center ${config.sqlSingleLine ? 'whitespace-nowrap' : 'whitespace-pre-wrap break-all'}`}
                         onClick={() => store.setFormatterModalOpen(true, log.reconstructedSql)}
                       >
                         {log.reconstructedSql}
