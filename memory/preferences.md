@@ -29,6 +29,8 @@
 - Output: ưu tiên NSIS installer (`.exe`) hơn MSI
 - Không cần cross-platform (macOS/Linux) ở giai đoạn này
 - Portable `.exe` (không cần install) là nice-to-have
+- **Persistence**: Tất cả cấu hình (Encoding, Trim SQL, Chế độ xem) phải được lưu lại sau khi tắt app.
+- **File Opening**: Hỗ trợ cả chọn file qua Dialog và nhập đường dẫn tuyệt đối (Manual Path).
 
 ## Tool Preferences
 - IDE: đang dùng cả Eclipse (legacy Java) và VSCode/Cursor (new projects)
@@ -36,4 +38,4 @@
 - Build script: `.bat` file, không dùng Makefile hay shell script
 
 ---
-<!-- Antigravity: update this file nếu user thể hiện preference mới trong session -->
+<!-- Antigravity: update this file nếu user thể hiện preference mới trong session -->

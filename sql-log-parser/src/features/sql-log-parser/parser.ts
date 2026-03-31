@@ -12,7 +12,15 @@ export interface DaoSession {
   logs: LogEntry[];
 }
 
-export function parseSqlLogs(content: string): DaoSession[] {
+function trimSqlOutsideQuotes(sql: string): string {
+  // Matches '...', '', or non-quote characters (including escaped '')
+  return sql.replace(/('(?:''|[^'])*')|\s+/g, (_match, group1) => {
+    if (group1) return group1; // It's a string literal, keep as is
+    return ' '; // It's whitespace, collapse to single space
+  }).trim();
+}
+
+export function parseSqlLogs(content: string, options: { trimSql?: boolean } = {}): DaoSession[] {
     const lines = content.split('\n');
     const sessions: DaoSession[] = [];
     let currentSession: DaoSession | null = null;
@@ -22,8 +30,8 @@ export function parseSqlLogs(content: string): DaoSession[] {
 
     lines.forEach((line, index) => {
         // 1. Timestamp extraction (YYYY-MM-DD HH:mm:ss)
-        const timeMatch = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
-        const timestamp = timeMatch ? timeMatch[1] : "";
+        const timeMatch = line.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
+        const timestamp = timeMatch ? timeMatch[0] : "";
 
         // 2. DAO Session Boundary
         // Pattern: InvokeDao ,Daoの開始[FullClassName]
@@ -53,7 +61,10 @@ export function parseSqlLogs(content: string): DaoSession[] {
         const sqlMatch = line.match(/CreatePreparedStatement id=([a-f0-9]+)\s+sql=(.*)/);
         if (sqlMatch) {
             const id = sqlMatch[1];
-            const sqlText = sqlMatch[2].trim();
+            let sqlText = sqlMatch[2].trim();
+            if (options.trimSql) {
+                sqlText = trimSqlOutsideQuotes(sqlText);
+            }
             activeSqls.set(id, sqlText);
         }
 

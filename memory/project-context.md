@@ -13,19 +13,11 @@ SQL Log Parser
 `d:\linh_ta_linh_tinh\log-reader\sql-log-parser`
 
 ## Key Dependencies
-| Package | Version | Purpose |
-|---|---|---|
-| tauri | 2.x | Desktop shell |
-| @tauri-apps/api | 2.x | Frontend ↔ Rust bridge |
-| @tauri-apps/plugin-dialog | 2.x | Native file open dialog |
-| @tauri-apps/plugin-store | 2.x | Zustand persistence |
-| zustand | 5.x | App state management |
-| @monaco-editor/react | 4.x | SQL syntax highlighting editor |
-| @tanstack/react-virtual | 3.x | Virtual scroll for log lines |
-| sql-formatter | 15.x | SQL formatting |
-| lucide-react | 0.x | Icon set |
-| encoding_rs (Rust) | 0.8.x | Đọc file mã hóa Text đa ngôn ngữ |
-| chardetng (Rust) | 0.1.x | Auto-detect File Encoding |
+| encoding_rs (Rust) | 0.8.x | Reading multi-encoding text |
+| chardetng (Rust) | 1.0.0 | Auto-detect File Encoding (Iso2022JpDetect::Allow) |
+| @tauri-apps/plugin-store | 2.x | Native JSON KV persistence |
+| @tanstack/react-virtual| 3.x | Virtualized Log List |
+
 
 ## Architecture Overview
 ```
@@ -34,14 +26,16 @@ React UI
   ├── Toolbar — Open, Refresh, Encoding, Filter, Sort
   ├── Logs Table — Virtualized representation of SQL Logs
   ├── StatusBar — Active file, Encoding info
-  └── Modals — AliasModal, FilterModal, SqlFormatterModal
+  └── Modals — AliasModal, FilterModal, SqlFormatterModal, SettingsModal, PathModal
+
 
 Rust Backend (Tauri commands)
   └── read_file_encoded(path, encoding) → Result<FileReadResponse, String>
 
 Shared Zustand Stores
-  ├── useSqlLogStore — Persistent files, parsing, filtering state
-  └── useConfigStore — Global app state (encoding)
+  ├── useSqlLogStore — Persistent files list (`sql_log_files.json`)
+  └── useConfigStore — App settings (`config_settings.json`), Auto encoding
+
 
 Shared Types
   ├── LogEntry { logIndex, timestamp, type, rawLine, reconstructedSql, daoName }
@@ -72,7 +66,10 @@ sql-log-parser/
 │           ├── parser.ts
 │           ├── FilterModal.tsx
 │           ├── AliasModal.tsx
-│           └── SqlFormatterModal.tsx
+│           ├── SqlFormatterModal.tsx
+│           ├── SettingsModal.tsx
+│           └── PathModal.tsx
+
 ├── package.json
 └── build.bat
 ```

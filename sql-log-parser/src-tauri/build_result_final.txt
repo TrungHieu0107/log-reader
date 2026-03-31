@@ -1,0 +1,82 @@
+cargo :     Checking sql-log-parser v0.1.0 (D:\
+linh_ta_linh_tinh\log-reader\sql-log-parser\src
+-tauri)
+At line:1 char:1
++ cargo check 2>&1 | Out-String | Set-Content b
+uild_result_final.txt
++ ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (  
+      Checking sq...rser\src-tauri):String) [  
+  ], RemoteException
+    + FullyQualifiedErrorId : NativeCommandErr 
+   or
+ 
+warning: unused imports: `EncodingDetector`, `I
+so2022JpDetection`, and `Utf8Detection`
+ --> src\file_reader.rs:5:17
+  |
+5 | use chardetng::{EncodingDetector, Iso2022Jp
+Detection, Utf8Detection};
+  |                 ^^^^^^^^^^^^^^^^  ^^^^^^^^^
+^^^^^^^^^  ^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#
+[warn(unused)]`) on by default
+
+warning: unreachable expression
+  --> src\file_reader.rs:70:9
+   |
+68 | /         match y {
+69 | |         }
+   | |_________- any code following this expres
+sion is unreachable
+70 |           unreachable!()
+   |           ^^^^^^^^^^^^^^ unreachable expre
+ssion
+   |
+   = note: `#[warn(unreachable_code)]` (part of
+ `#[warn(unused)]`) on by default
+
+error[E0004]: non-exhaustive patterns: `Utf8Det
+ection::Allow` and `Utf8Detection::Deny` not co
+vered
+    --> src\file_reader.rs:68:15
+     |
+  68 |         match y {
+     |               ^ patterns `Utf8Detection:
+:Allow` and `Utf8Detection::Deny` not covered
+     |
+note: `Utf8Detection` defined here
+    --> C:\Users\Administrator\.cargo\registry\
+src\index.crates.io-1949cf8c6b5b557f\chardetng-
+1.0.0\src\lib.rs:2832:1
+     |
+2832 | pub enum Utf8Detection {
+     | ^^^^^^^^^^^^^^^^^^^^^^
+...
+2838 |     Allow,
+     |     ----- not covered
+2839 |     /// The guess result is not allowed 
+to be UTF-8.
+2840 |     Deny,
+     |     ---- not covered
+     = note: the matched value is of type `Utf8
+Detection`
+help: ensure that all possible cases are being 
+handled by adding a match arm with a wildcard p
+attern, a match arm with multiple or-patterns a
+s shown, or multiple match arms
+     |
+  68 |         match y {
+  69 ~             Utf8Detection::Allow | Utf8D
+etection::Deny => todo!(),
+  70 ~         }
+     |
+
+For more information about this error, try `rus
+tc --explain E0004`.
+warning: `sql-log-parser` (lib) generated 2 war
+nings
+error: could not compile `sql-log-parser` (lib)
+ due to 1 previous error; 2 warnings emitted
+

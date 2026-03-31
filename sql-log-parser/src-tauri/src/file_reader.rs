@@ -2,11 +2,13 @@ use serde::Serialize;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use encoding_rs::*;
+use chardetng::{EncodingDetector, Iso2022JpDetection, Utf8Detection};
 
 #[derive(Serialize)]
 pub struct FileReadResponse {
     content: Option<String>,
     is_binary: bool,
+    detected_encoding: Option<String>,
     error: Option<String>,
 }
 
@@ -17,6 +19,7 @@ pub fn read_file_encoded(path: String, encoding: String) -> Result<FileReadRespo
         Err(e) => return Ok(FileReadResponse {
             content: None,
             is_binary: false,
+            detected_encoding: None,
             error: Some(e.to_string()),
         }),
     };
@@ -27,6 +30,7 @@ pub fn read_file_encoded(path: String, encoding: String) -> Result<FileReadRespo
         Err(e) => return Ok(FileReadResponse {
             content: None,
             is_binary: false,
+            detected_encoding: None,
             error: Some(e.to_string()),
         }),
     };
@@ -35,6 +39,7 @@ pub fn read_file_encoded(path: String, encoding: String) -> Result<FileReadRespo
         return Ok(FileReadResponse {
             content: None,
             is_binary: true,
+            detected_encoding: None,
             error: None,
         });
     }
@@ -43,6 +48,7 @@ pub fn read_file_encoded(path: String, encoding: String) -> Result<FileReadRespo
         return Ok(FileReadResponse {
             content: None,
             is_binary: false,
+            detected_encoding: None,
             error: Some(e.to_string()),
         });
     }
@@ -52,21 +58,31 @@ pub fn read_file_encoded(path: String, encoding: String) -> Result<FileReadRespo
         return Ok(FileReadResponse {
             content: None,
             is_binary: false,
+            detected_encoding: None,
             error: Some(e.to_string()),
         });
     }
 
-    let encoder = match encoding.as_str() {
-        "Shift_JIS" | "SJIS" | "MS932" => SHIFT_JIS,
-        "EUC-JP" => EUC_JP,
-        "UTF-16LE" => UTF_16LE,
-        "Windows-1252" => WINDOWS_1252,
-        "UTF-8" => UTF_8,
-        _ => return Ok(FileReadResponse {
-            content: None,
-            is_binary: false,
-            error: Some(format!("Unknown encoding: {}", encoding)),
-        })
+    let (encoder, detected_name): (&'static Encoding, Option<String>) = if encoding == "Auto" {
+        let mut detector = EncodingDetector::new(Iso2022JpDetection::Allow);
+        detector.feed(&buffer[..bytes_read], bytes_read < 8192);
+        let top_encoding = detector.guess(None, Utf8Detection::Allow);
+        (top_encoding, Some(top_encoding.name().to_string()))
+    } else {
+        let enc = match encoding.as_str() {
+            "Shift_JIS" | "SJIS" | "MS932" => SHIFT_JIS,
+            "EUC-JP" => EUC_JP,
+            "UTF-16LE" => UTF_16LE,
+            "Windows-1252" => WINDOWS_1252,
+            "UTF-8" => UTF_8,
+            _ => return Ok(FileReadResponse {
+                content: None,
+                is_binary: false,
+                detected_encoding: None,
+                error: Some(format!("Unknown encoding: {}", encoding)),
+            })
+        };
+        (enc, None)
     };
 
     let (cow, _, _) = encoder.decode(&all_bytes);
@@ -75,6 +91,7 @@ pub fn read_file_encoded(path: String, encoding: String) -> Result<FileReadRespo
     Ok(FileReadResponse {
         content: Some(decoded_string),
         is_binary: false,
+        detected_encoding: detected_name,
         error: None,
     })
 }

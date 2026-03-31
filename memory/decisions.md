@@ -75,3 +75,30 @@ Mỗi decision ghi theo format:
 - **Reason**: In `@tauri-apps/plugin-store` v2, `new Store()` constructor is private. `LazyStore` acts as a direct synchronous substitute with lazy disk load, avoiding blocking the main UI thread.
 - **Alternatives considered**: Async `Store.load()` (would complicate standard Zustand setup).
 - **Status**: Active
+
+### [2026-03-31] — Pagination for Large Logs
+- **Decision**: Added pagination (100 items/page) and sliced results in the frontend `useMemo`.
+- **Reason**: To maintain 60 FPS UI performance even when filters match 10,000+ queries. Pagination combined with Virtual Scroll is the most stable approach.
+- **Alternatives considered**: Infinite scroll (more complex for jumping to specific logs).
+- **Status**: Active
+
+### [2026-03-31] — Chardetng API Compatibility Fix
+- **Decision**: Updated `EncodingDetector` calls to pass `Iso2022JpDetection::Allow` and `Utf8Detection::Allow`.
+- **Reason**: The `chardetng 1.0.0` crate changed these from `bool` to mandatory `enum` variants.
+- **Alternatives considered**: Downgrading the crate (less secure).
+- **Status**: Active
+
+- **Status**: Active
+
+### [2026-03-31] — Pagination Stabilized Layout
+- **Decision**: Wrapped pagination in a `max-w-md` flex container with `justify-between`.
+- **Reason**: To prevent the Previous/Next buttons from jumping when the number of page boxes (1 2 3 vs 1 2 ... 10) changes.
+- **Alternatives considered**: Fixed width buttons (less flexible for labels).
+- **Status**: Active
+
+### [2026-03-31] — Manual Path Entry with PathModal
+- **Decision**: Added a `+` button in the toolbar that opens a `PathModal.tsx`.
+- **Reason**: Users sometimes prefer pasting a full absolute path instead of navigating through the native file dialog.
+- **Alternatives considered**: Inline text field in toolbar (cluttered the UI).
+- **Status**: Active
+

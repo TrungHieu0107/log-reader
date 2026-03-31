@@ -10,8 +10,10 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   FolderOpen, RefreshCw, Filter, ArrowDownUp, 
-  Copy, Check, Database, FileText, ChevronLeft, ChevronRight, X
+  Copy, Check, Database, FileText, ChevronLeft, ChevronRight, X, Settings, Plus
 } from 'lucide-react';
+import { SettingsModal } from './SettingsModal';
+import { PathModal } from './PathModal';
 
 export function SqlLogParser() {
   const store = useSqlLogStore();
@@ -22,12 +24,16 @@ export function SqlLogParser() {
   const [isResizing, setIsResizing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
-  // Right-click menu state
+  // Modals state
   const [contextMenu, setContextMenu] = useState<{path: string, x: number, y: number} | null>(null);
+  const [isSettingsOpen, setSettingsOpen] = useState(false);
+  const [isPathModalOpen, setPathModalOpen] = useState(false);
 
   // Load persistence
   useEffect(() => {
-    store.reloadFiles(config.encoding);
+    config.loadConfig().then(() => {
+      store.reloadFiles(config.encoding);
+    });
     const hideMenu = () => setContextMenu(null);
     window.addEventListener('click', hideMenu);
     return () => window.removeEventListener('click', hideMenu);
@@ -57,18 +63,23 @@ export function SqlLogParser() {
       filters: [{ name: "Log files", extensions: ["log", "txt", "*"] }],
     });
     if (selected && typeof selected === 'string') {
-      try {
-        const res = await invoke<{content: string | null, is_binary: boolean, error: string | null}>('read_file_encoded', {
-          path: selected, encoding: config.encoding
-        });
-        if (res.content) {
-          store.addFile(selected, res.content);
-        } else if (res.error) {
-          alert("Error: " + res.error);
-        }
-      } catch (err) {
-        console.error(err);
+      handleOpenFileByPath(selected);
+    }
+  };
+
+  const handleOpenFileByPath = async (path: string) => {
+    try {
+      const res = await invoke<{content: string | null, is_binary: boolean, error: string | null}>('read_file_encoded', {
+        path, encoding: config.encoding
+      });
+      if (res.content) {
+        store.addFile(path, res.content);
+      } else if (res.error) {
+        alert("Error: " + res.error);
       }
+    } catch (err) {
+      console.error(err);
+      alert("Invalid path or file not found.");
     }
   };
 
@@ -89,17 +100,15 @@ export function SqlLogParser() {
     }
   };
 
-  // Derive active logs and apply filters
-  const visibleLogs = useMemo(() => {
+  // 1. All Filtered & Sorted Logs
+  const allFilteredLogs = useMemo(() => {
     const activeFile = store.files.find(f => f.path === store.activeFilePath);
     if (!activeFile) return [];
     
-    // Flatten sql logs
     let logs = activeFile.sessions
       .flatMap(s => s.logs)
       .filter(l => l.type === 'sql' && l.reconstructedSql);
 
-    // Apply filters (AND logic)
     for (const f of store.filters) {
       logs = logs.filter(l => {
         let fieldVal = '';
@@ -122,7 +131,6 @@ export function SqlLogParser() {
       });
     }
 
-    // Sort
     logs.sort((a, b) => {
       if (store.sortOrder === 'asc') return a.logIndex - b.logIndex;
       return b.logIndex - a.logIndex;
@@ -130,6 +138,14 @@ export function SqlLogParser() {
 
     return logs;
   }, [store.files, store.activeFilePath, store.filters, store.sortOrder]);
+
+  // 2. Paginated Slice
+  const visibleLogs = useMemo(() => {
+    const start = (store.page - 1) * store.pageSize;
+    return allFilteredLogs.slice(start, start + store.pageSize);
+  }, [allFilteredLogs, store.page, store.pageSize]);
+
+  const totalPages = Math.ceil(allFilteredLogs.length / store.pageSize);
 
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -220,6 +236,13 @@ export function SqlLogParser() {
                 <FolderOpen size={16} className="mr-2" /> Open File
               </button>
               <button 
+                className="flex items-center px-2 py-1 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow transition-colors"
+                onClick={() => setPathModalOpen(true)}
+                title="Open by path"
+              >
+                <Plus size={16} />
+              </button>
+              <button 
                 className="flex items-center px-3 py-1 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow transition-colors disabled:opacity-50"
                 onClick={handleRefresh}
                 disabled={!store.activeFilePath || refreshing}
@@ -231,6 +254,7 @@ export function SqlLogParser() {
                 value={config.encoding}
                 onChange={handleEncodingChange}
               >
+                <option value="Auto">Auto Detect</option>
                 <option value="UTF-8">UTF-8</option>
                 <option value="Shift_JIS">Shift_JIS (MS932)</option>
                 <option value="EUC-JP">EUC-JP</option>
@@ -241,7 +265,7 @@ export function SqlLogParser() {
             
             <div className="flex items-center space-x-3">
               <span className="text-xs bg-blue-600/20 text-blue-400 px-2 py-1 rounded font-mono">
-                {visibleLogs.length} Queries
+                {allFilteredLogs.length} Total
               </span>
               <button 
                 className="flex items-center px-3 py-1 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow disabled:opacity-50 transition-colors"
@@ -257,6 +281,13 @@ export function SqlLogParser() {
               >
                 <ArrowDownUp size={14} className="mr-2" />
                 {store.sortOrder === 'asc' ? 'Oldest First' : 'Newest First'}
+              </button>
+              <button 
+                className="p-1.5 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded shadow transition-colors"
+                onClick={() => setSettingsOpen(true)}
+                title="Application Settings"
+              >
+                <Settings size={16} />
               </button>
             </div>
           </div>
@@ -324,7 +355,7 @@ export function SqlLogParser() {
                         {log.daoName}
                       </div>
                       <div 
-                        className="flex-1 px-2 font-mono text-xs text-[#CE9178] whitespace-pre-wrap break-all cursor-pointer hover:underline underline-offset-2"
+                        className={`flex-1 px-2 font-mono text-xs text-[#CE9178] cursor-pointer hover:underline underline-offset-2 ${config.sqlSingleLine ? 'whitespace-nowrap overflow-x-auto scrollbar-hide py-1' : 'whitespace-pre-wrap break-all'}`}
                         onClick={() => store.setFormatterModalOpen(true, log.reconstructedSql)}
                       >
                         {log.reconstructedSql}
@@ -344,15 +375,83 @@ export function SqlLogParser() {
               </div>
             )}
           </div>
-        </div>
 
+          {/* Boxed Pagination Footer */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center p-3 bg-[#252526] border-t border-[#3C3C3D]">
+              <div className="flex items-center justify-between w-full max-w-md">
+                <button 
+                  onClick={() => store.setPage(store.page - 1)}
+                  disabled={store.page === 1}
+                  className="p-1.5 rounded hover:bg-[#3C3C3C] disabled:opacity-10 disabled:hover:bg-transparent text-gray-400 hover:text-white transition-all flex items-center"
+                >
+                  <ChevronLeft size={18} className="mr-1" />
+                  <span className="text-xs font-medium">Previous</span>
+                </button>
+
+                <div className="flex items-center space-x-1.5">
+                  {(() => {
+                    const pages: (number | string)[] = [];
+                    const current = store.page;
+                    const total = totalPages;
+
+                    if (total <= 7) {
+                      for (let i = 1; i <= total; i++) pages.push(i);
+                    } else {
+                      pages.push(1);
+                      if (current > 3) pages.push('...');
+                      
+                      const start = Math.max(2, current - 1);
+                      const end = Math.min(total - 1, current + 1);
+                      
+                      for (let i = start; i <= end; i++) {
+                        if (!pages.includes(i)) pages.push(i);
+                      }
+                      
+                      if (current < total - 2) pages.push('...');
+                      pages.push(total);
+                    }
+
+                    return pages.map((p, i) => (
+                      <React.Fragment key={i}>
+                        {p === '...' ? (
+                          <span className="px-1 text-gray-500 font-bold select-none cursor-default">...</span>
+                        ) : (
+                          <button
+                            onClick={() => store.setPage(p as number)}
+                            className={`min-w-[32px] h-[32px] flex items-center justify-center rounded text-sm font-medium transition-all ${
+                              store.page === p 
+                              ? 'bg-blue-600 text-white shadow-lg' 
+                              : 'bg-[#3C3C3C] text-gray-400 hover:bg-[#4D4D4D] hover:text-white'
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        )}
+                      </React.Fragment>
+                    ));
+                  })()}
+                </div>
+
+                <button 
+                  onClick={() => store.setPage(store.page + 1)}
+                  disabled={store.page === totalPages}
+                  className="p-1.5 rounded hover:bg-[#3C3C3C] disabled:opacity-10 disabled:hover:bg-transparent text-gray-400 hover:text-white transition-all flex items-center"
+                >
+                  <span className="text-xs font-medium">Next</span>
+                  <ChevronRight size={18} className="ml-1" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Footer */}
       <StatusBar 
         activeFileName={store.files.find(f => f.path === store.activeFilePath)?.alias || store.activeFilePath?.split(/[/\\]/).pop() || ''}
         activeLanguage="SQL"
-        activeEncoding={config.encoding}
+        activeEncoding={config.encoding === 'Auto' ? `Auto (${store.files.find(f => f.path === store.activeFilePath)?.detectedEncoding || 'Detecting...'})` : config.encoding}
         isCompareMode={false}
         onLanguageChange={() => {}}
         onEncodingChange={(enc) => config.updateConfig({ encoding: enc })}
@@ -367,6 +466,7 @@ export function SqlLogParser() {
           <div 
             className="px-4 py-1.5 hover:bg-blue-600 hover:text-white cursor-pointer"
             onClick={() => {
+              if (!contextMenu) return;
               const file = store.files.find(f => f.path === contextMenu.path);
               store.setAliasModalProps({
                 isOpen: true,
@@ -378,7 +478,9 @@ export function SqlLogParser() {
           >Set Alias</div>
           <div 
             className="px-4 py-1.5 text-red-400 hover:bg-red-600 hover:text-white cursor-pointer"
-            onClick={() => store.removeFile(contextMenu.path)}
+            onClick={() => {
+              if (contextMenu) store.removeFile(contextMenu.path);
+            }}
           >Remove</div>
         </div>
       )}
@@ -398,9 +500,18 @@ export function SqlLogParser() {
           isOpen={store.aliasModalProps.isOpen}
           initialValue={store.aliasModalProps.initialValue}
           onSave={store.aliasModalProps.onSave}
-          onClose={() => store.setAliasModalProps({ ...store.aliasModalProps!, isOpen: false })}
+          onClose={() => store.setAliasModalProps({ ...(store.aliasModalProps || { isOpen: false, filePath: '', initialValue: '', onSave: () => {} }), isOpen: false })}
         />
       )}
+      <SettingsModal 
+        isOpen={isSettingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
+      <PathModal 
+        isOpen={isPathModalOpen}
+        onClose={() => setPathModalOpen(false)}
+        onOpen={handleOpenFileByPath}
+      />
     </div>
   );
 }
