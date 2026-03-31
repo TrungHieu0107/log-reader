@@ -29,10 +29,14 @@ export function AliasModal({ isOpen, onClose, initialValue, onSave }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
       <div 
         className="w-96 rounded shadow-lg p-4"
         style={{ backgroundColor: '#252526', border: '1px solid #454545', color: '#D4D4D4' }}
+        onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-semibold mb-4 text-white">Set File Alias</h2>
         <input

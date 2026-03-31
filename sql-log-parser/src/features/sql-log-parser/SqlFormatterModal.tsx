@@ -57,10 +57,14 @@ export function SqlFormatterModal({ isOpen, onClose, sql }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-10">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-10"
+      onClick={onClose}
+    >
       <div 
         className="flex flex-col w-full h-full max-w-5xl shadow-2xl overflow-hidden rounded-md"
         style={{ backgroundColor: '#1E1E1E', border: '1px solid #454545' }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* VSCode Tab Bar Header */}
         <div 
