@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { LazyStore } from '@tauri-apps/plugin-store';
-import { DaoSession, parseSqlLogs } from './parser';
+import { DaoSession } from './parser';
 import { useConfigStore } from '../../components/configStore';
 import { FileReadResponse } from '../../types/tauri';
 

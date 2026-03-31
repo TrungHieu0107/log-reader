@@ -147,6 +147,46 @@ export function SqlLogParser() {
     }
   };
 
+  // Keyboard Shortcuts Listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if typing in an input
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        if (e.key === 'Escape') {
+          (document.activeElement as HTMLElement).blur();
+        }
+        return;
+      }
+
+      const ctrl = e.ctrlKey || e.metaKey;
+      const alt = e.altKey;
+
+      // Ctrl + O: Open
+      if (ctrl && e.key.toLowerCase() === 'o') {
+        e.preventDefault();
+        handleOpenFile();
+      }
+      // Ctrl + F: Filter
+      if (ctrl && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        if (store.activeFilePath) store.setFilterModalOpen(true);
+      }
+      // Alt + S: Settings
+      if (alt && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        setSettingsOpen(true);
+      }
+      // Ctrl + R or F5: Reload
+      if ((ctrl && e.key.toLowerCase() === 'r') || e.key === 'F5') {
+        e.preventDefault();
+        handleRefresh();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [store.activeFilePath, handleOpenFile, handleRefresh]);
+
   const handleEncodingChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const enc = e.target.value;
     config.updateConfig({ encoding: enc });
