@@ -1,16 +1,16 @@
 # Project Context
 
 ## App Name
-Log Reader
+SQL Log Parser
 
 ## Stack
 - Runtime: Tauri 2
 - Backend: Rust (stable, x86_64-pc-windows-msvc)
 - Frontend: React 18 + TypeScript + Vite
-- Styling: CSS modules hoặc inline styles (chưa quyết định)
+- Styling: TailwindCSS (v4)
 
 ## Project Root
-`D:/projects/log-reader/` ← cập nhật đường dẫn thực tế
+`d:\linh_ta_linh_tinh\log-reader\sql-log-parser`
 
 ## Key Dependencies
 | Package | Version | Purpose |
@@ -18,54 +18,61 @@ Log Reader
 | tauri | 2.x | Desktop shell |
 | @tauri-apps/api | 2.x | Frontend ↔ Rust bridge |
 | @tauri-apps/plugin-dialog | 2.x | Native file open dialog |
-| @tauri-apps/plugin-clipboard-manager | 2.x | Clipboard support |
+| @tauri-apps/plugin-store | 2.x | Zustand persistence |
+| zustand | 5.x | App state management |
+| @monaco-editor/react | 4.x | SQL syntax highlighting editor |
 | @tanstack/react-virtual | 3.x | Virtual scroll for log lines |
-| notify (Rust) | 6.x | File watcher for tail mode |
-| regex (Rust) | 1.x | Log line filtering |
+| sql-formatter | 15.x | SQL formatting |
+| lucide-react | 0.x | Icon set |
 | encoding_rs (Rust) | 0.8.x | Đọc file mã hóa Text đa ngôn ngữ |
 | chardetng (Rust) | 0.1.x | Auto-detect File Encoding |
 
 ## Architecture Overview
 ```
 React UI
-  ├── FilterBar — file open, search input, tail toggle
-  ├── LogViewer — virtualized list (@tanstack/react-virtual v3)
-  └── StatusBar — line count, page, tail indicator
+  ├── Sidebar — File list, clear all
+  ├── Toolbar — Open, Refresh, Encoding, Filter, Sort
+  ├── Logs Table — Virtualized representation of SQL Logs
+  ├── StatusBar — Active file, Encoding info
+  └── Modals — AliasModal, FilterModal, SqlFormatterModal
 
 Rust Backend (Tauri commands)
-  ├── cmd_read_page(path, page, page_size) → LogChunk
-  ├── cmd_filter_log(path, pattern, max_results) → Vec<LogLine>
-  ├── cmd_start_tail(path, window) → ()  [emits "log:new-lines"]
-  └── cmd_stop_tail(state) → ()
+  └── read_file_encoded(path, encoding) → Result<FileReadResponse, String>
 
-Shared Structs
-  ├── LogLine { index, content, offset }
-  └── LogChunk { lines, total_lines, has_more }
+Shared Zustand Stores
+  ├── useSqlLogStore — Persistent files, parsing, filtering state
+  └── useConfigStore — Global app state (encoding)
+
+Shared Types
+  ├── LogEntry { logIndex, timestamp, type, rawLine, reconstructedSql, daoName }
+  └── DaoSession { daoName, logs:[] }
 ```
 
 ## File Structure
 ```
-log-reader/
+sql-log-parser/
 ├── src-tauri/
 │   ├── src/
-│   │   ├── main.rs        — entry point only
-│   │   ├── lib.rs         — tauri builder + command registration
-│   │   └── log_reader.rs  — all file I/O logic
-│   ├── .cargo/
-│   │   └── config.toml    — isolated target-dir configuration
+│   │   ├── main.rs
+│   │   ├── lib.rs
+│   │   └── file_reader.rs  — multi-encoding IO logic
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── src/
 │   ├── App.tsx
 │   ├── main.tsx
-│   ├── types.ts
-│   └── components/
-│       ├── LogViewer.tsx
-│       ├── FilterBar.tsx
-│       └── StatusBar.tsx
-├── index.html
-├── vite.config.ts
+│   ├── components/
+│   │   ├── StatusBar.tsx
+│   │   └── configStore.ts
+│   └── features/
+│       └── sql-log-parser/
+│           ├── index.ts
+│           ├── SqlLogParser.tsx
+│           ├── store.ts
+│           ├── parser.ts
+│           ├── FilterModal.tsx
+│           ├── AliasModal.tsx
+│           └── SqlFormatterModal.tsx
 ├── package.json
-├── build.bat
-└── memory/               ← memory folder này
+└── build.bat
 ```

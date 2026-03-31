@@ -63,3 +63,15 @@ Mỗi decision ghi theo format:
 
 ---
 <!-- Antigravity: append new decisions below this line -->
+
+### [2026-03-31] — Missing Reference Files Resolved via Scaffolding
+- **Decision**: Implemented `parser.ts`, `store.ts`, `SqlLogParser.tsx` and modal files manually since they were not provided in the workspace.
+- **Reason**: To ensure that the SQL Log Parser desktop app can be built exactly following the Phase 1-8 constraints and the provided UI descriptors, while unblocking the process.
+- **Alternatives considered**: Block completely waiting for the user to upload the files.
+- **Status**: Active
+
+### [2026-03-31] — Tauri v2 Store Initialization
+- **Decision**: Used `LazyStore` from `@tauri-apps/plugin-store` instead of `new Store()`.
+- **Reason**: In `@tauri-apps/plugin-store` v2, `new Store()` constructor is private. `LazyStore` acts as a direct synchronous substitute with lazy disk load, avoiding blocking the main UI thread.
+- **Alternatives considered**: Async `Store.load()` (would complicate standard Zustand setup).
+- **Status**: Active
