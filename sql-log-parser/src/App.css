@@ -1,32 +1,56 @@
-/* Custom Scrollbar Styling (VSCode-like) */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #333333;
-  border-radius: 5px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #4f4f4f;
-  background-clip: content-box;
-}
-::-webkit-scrollbar-corner {
-  background: transparent;
+@import "tailwindcss";
+
+:root {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+  background-color: #1e1e1e;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Horizontal scrollbar for single-line SQL mode */
-.sql-single-line {
-  scrollbar-width: thin;
-  scrollbar-color: #333333 transparent;
+body {
+  margin: 0;
+  background-color: #1e1e1e;
+  overflow: hidden;
 }
-.sql-single-line::-webkit-scrollbar {
+
+code, .font-mono {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
+/* Custom Scrollbars for Windows 11 WebView2 (Thin VSCode Style) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #424242 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
   height: 6px;
 }
 
-@import "tailwindcss";
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Scrollbar hide utility */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}

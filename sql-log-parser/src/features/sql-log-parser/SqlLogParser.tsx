@@ -6,7 +6,6 @@ import { FilterModal } from './FilterModal';
 import { AliasModal } from './AliasModal';
 import { SqlFormatterModal } from './SqlFormatterModal';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   FolderOpen, RefreshCw, Filter, ArrowDownUp, 
@@ -15,131 +14,149 @@ import {
 import { SettingsModal } from './SettingsModal';
 import { PathModal } from './PathModal';
 
+// Hooks & Types
+import { useSqlLogs } from './useSqlLogs';
+import { useFileOpen } from './useFileOpen';
+import { FileReadResponse } from '../../types/tauri';
+
 export function SqlLogParser() {
   const store = useSqlLogStore();
   const config = useConfigStore();
   
-  const [sidebarWidth, setSidebarWidth] = useState(300);
-  const [isSidebarOpen, setSidebarOpen] = useState(true);
+  // 5.2-5.4 Sidebar & State Persistence
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem('sql-parser-sidebar-width');
+    return saved ? parseInt(saved, 10) : 300;
+  });
+  const [isSidebarOpen, setSidebarOpen] = useState(() => {
+    return localStorage.getItem('sql-parser-sidebar-collapsed') !== 'true';
+  });
   const [isResizing, setIsResizing] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const [isReloading, setIsReloading] = useState(false);
   
-  // Modals state
-  const [contextMenu, setContextMenu] = useState<{path: string, x: number, y: number} | null>(null);
+  // 4.1 Error Toast State
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  // Modals & Menu
+  const [contextMenu, setContextMenu] = useState<{ path: string, x: number, y: number } | null>(null);
   const [isSettingsOpen, setSettingsOpen] = useState(false);
   const [isPathModalOpen, setPathModalOpen] = useState(false);
+
+  // Persistence Effects
+  useEffect(() => {
+    localStorage.setItem('sql-parser-sidebar-width', String(sidebarWidth));
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    localStorage.setItem('sql-parser-sidebar-collapsed', String(!isSidebarOpen));
+  }, [isSidebarOpen]);
 
   // Load persistence
   useEffect(() => {
     config.loadConfig().then(() => {
       store.reloadFiles(config.encoding);
     });
-    const hideMenu = () => setContextMenu(null);
-    window.addEventListener('click', hideMenu);
-    return () => window.removeEventListener('click', hideMenu);
-  }, []); // run once on mount
+  }, []);
 
-  // Sidebar resize
+  // 3.1 Sidebar Drag Cleanup (Refactored)
   useEffect(() => {
+    if (!isResizing) return;
+
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
-      setSidebarWidth(Math.max(200, Math.min(800, e.clientX)));
+      const newWidth = Math.min(Math.max(e.clientX, 200), 800);
+      setSidebarWidth(newWidth);
     };
     const handleMouseUp = () => setIsResizing(false);
-    
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
     };
   }, [isResizing]);
 
-  const handleOpenFile = async () => {
-    const selected = await open({
-      multiple: false,
-      filters: [{ name: "Log files", extensions: ["log", "txt", "*"] }],
-    });
-    if (selected && typeof selected === 'string') {
-      handleOpenFileByPath(selected);
-    }
-  };
+  // 4.1 Auto-dismiss error
+  useEffect(() => {
+    if (!errorMessage) return;
+    const t = setTimeout(() => setErrorMessage(null), 5000);
+    return () => clearTimeout(t);
+  }, [errorMessage]);
+
+  // 3.3 Context menu scroll close
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('click', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('click', close);
+    };
+  }, [contextMenu]);
+
+  // 6.2 Extract file open logic
+  const handleOpenFile = useFileOpen(
+    config.encoding, 
+    store.addFile, 
+    setErrorMessage
+  );
 
   const handleOpenFileByPath = async (path: string) => {
     try {
-      const res = await invoke<{content: string | null, is_binary: boolean, error: string | null}>('read_file_encoded', {
+      const res: FileReadResponse = await invoke('read_file_encoded', {
         path, encoding: config.encoding
       });
-      if (res.content) {
-        store.addFile(path, res.content);
-      } else if (res.error) {
-        alert("Error: " + res.error);
+      if (res.error) {
+        setErrorMessage(`Failed to open: ${res.error}`);
+      } else if (res.content) {
+        store.addFile(path, res.content, res.detected_encoding || undefined);
       }
     } catch (err) {
-      console.error(err);
-      alert("Invalid path or file not found.");
+      setErrorMessage(String(err));
     }
   };
 
   const handleRefresh = async () => {
     if (!store.activeFilePath) return;
-    setRefreshing(true);
-    await store.reloadActiveFile(config.encoding);
-    setRefreshing(false);
+    setIsReloading(true);
+    try {
+      await store.reloadActiveFile(config.encoding);
+    } catch (err) {
+      setErrorMessage("Failed to refresh file.");
+    } finally {
+      setIsReloading(false);
+    }
   };
 
   const handleEncodingChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const enc = e.target.value;
     config.updateConfig({ encoding: enc });
     if (store.activeFilePath) {
-      setRefreshing(true);
-      await store.reloadActiveFile(enc);
-      setRefreshing(false);
+      setIsReloading(true);
+      try {
+        await store.reloadActiveFile(enc);
+      } catch (err) {
+        setErrorMessage(`Failed to re-read file with encoding ${enc}`);
+      } finally {
+        setIsReloading(false);
+      }
     }
   };
 
-  // 1. All Filtered & Sorted Logs
-  const allFilteredLogs = useMemo(() => {
-    const activeFile = store.files.find(f => f.path === store.activeFilePath);
-    if (!activeFile) return [];
-    
-    let logs = activeFile.sessions
-      .flatMap(s => s.logs)
-      .filter(l => l.type === 'sql' && l.reconstructedSql);
+  // 6.1 Custom Hook for Logs
+  const activeFile = useMemo(() => {
+    return store.files.find(f => f.path === store.activeFilePath);
+  }, [store.files, store.activeFilePath]);
 
-    for (const f of store.filters) {
-      logs = logs.filter(l => {
-        let fieldVal = '';
-        if (f.type === 'query') fieldVal = l.reconstructedSql || '';
-        if (f.type === 'dao') fieldVal = l.daoName || '';
-        if (f.type === 'time') fieldVal = l.timestamp || '';
+  const allFilteredLogs = useSqlLogs(activeFile, store.filters, store.sortOrder);
 
-        const valLower = fieldVal.toLowerCase();
-        const searchLower = f.value.toLowerCase();
-
-        switch (f.operator) {
-          case 'contains': return valLower.includes(searchLower);
-          case 'not_contains': return !valLower.includes(searchLower);
-          case 'equals': return valLower === searchLower;
-          case 'not_equals': return valLower !== searchLower;
-          case 'greater_than': return valLower > searchLower;
-          case 'less_than': return valLower < searchLower;
-          default: return true;
-        }
-      });
-    }
-
-    logs.sort((a, b) => {
-      if (store.sortOrder === 'asc') return a.logIndex - b.logIndex;
-      return b.logIndex - a.logIndex;
-    });
-
-    return logs;
-  }, [store.files, store.activeFilePath, store.filters, store.sortOrder]);
-
-  // 2. Paginated Slice
+  // 2. Paginated Slice for Virtual Scroll
   const visibleLogs = useMemo(() => {
     const start = (store.page - 1) * store.pageSize;
     return allFilteredLogs.slice(start, start + store.pageSize);
@@ -147,6 +164,7 @@ export function SqlLogParser() {
 
   const totalPages = Math.ceil(allFilteredLogs.length / store.pageSize);
 
+  // 2. Virtual Scroll Implementation
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: visibleLogs.length,
@@ -155,18 +173,47 @@ export function SqlLogParser() {
     overscan: 10,
   });
 
-  // Action Buttons row state
+  // 3.2 Copy Timeout with useRef
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const copySql = (sql: string, index: number) => {
     navigator.clipboard.writeText(sql).then(() => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       setCopiedId(index);
-      setTimeout(() => setCopiedId(null), 2000);
+      copyTimerRef.current = setTimeout(() => setCopiedId(null), 2000);
+    }).catch(() => {
+      setErrorMessage("Failed to copy to clipboard.");
     });
+  };
+
+  useEffect(() => () => {
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+  }, []);
+
+  // 5.1 Context menu positioning
+  const handleContextMenu = (e: React.MouseEvent, path: string) => {
+    e.preventDefault();
+    const menuWidth = 160;
+    const menuHeight = 80;
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth - 8);
+    const y = Math.min(e.clientY, window.innerHeight - menuHeight - 8);
+    setContextMenu({ path, x, y });
   };
 
   return (
     <div className="flex flex-col h-screen overflow-hidden text-[#D4D4D4] bg-[#1E1E1E]">
+      
+      {/* 4.1 Error Toast Display */}
+      {errorMessage && (
+        <div className="flex items-center gap-3 px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs animate-in slide-in-from-top duration-200">
+          <span className="flex-1 font-medium">{errorMessage}</span>
+          <button onClick={() => setErrorMessage(null)} className="hover:text-white transition-colors">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-1 overflow-hidden">
         
         {/* Sidebar */}
@@ -183,187 +230,186 @@ export function SqlLogParser() {
                 {store.files.map(f => (
                   <div 
                     key={f.path}
-                    className={`px-4 py-1.5 flex items-center cursor-pointer text-sm truncate ${store.activeFilePath === f.path ? 'bg-[#37373D] text-white' : 'hover:bg-[#2A2D2E]'}`}
+                    className={`px-4 py-1.5 flex items-center cursor-pointer text-sm group ${store.activeFilePath === f.path ? 'bg-[#37373D] text-white' : 'hover:bg-[#2A2D2E]'}`}
                     onClick={() => store.setActiveFile(f.path)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setContextMenu({ path: f.path, x: e.clientX, y: e.clientY });
-                    }}
+                    onContextMenu={(e) => handleContextMenu(e, f.path)}
                    >
-                     <FileText size={14} className="mr-2 text-blue-400 shrink-0" />
-                     <span className="truncate">{f.alias || f.path.split(/[/\\]/).pop()}</span>
+                     <FileText size={14} className={`mr-2 shrink-0 ${store.activeFilePath === f.path ? 'text-blue-400' : 'text-gray-500 group-hover:text-blue-400'}`} />
+                     <span className="truncate">{f.alias || (f.path.split(/[/\\]/).pop() || f.path)}</span>
                   </div>
                 ))}
               </div>
               <div className="p-2 border-t border-[#3C3C3D]">
                 <button 
-                  className="w-full text-xs text-gray-400 hover:text-white pb-1"
+                  className="w-full text-xs text-center p-2 rounded hover:bg-red-900/20 text-gray-400 hover:text-red-400 transition-all"
                   onClick={() => store.clearAllFiles()}
                 >
-                  Clear All
+                  Clear All Files
                 </button>
               </div>
             </>
           )}
 
-          {/* Drag Handle */}
           <div 
-            className="absolute right-0 top-0 bottom-0 w-1 bg-transparent hover:bg-blue-500 cursor-col-resize z-10"
+            className="absolute right-0 top-0 bottom-0 w-1 bg-transparent hover:bg-blue-500/50 cursor-col-resize z-10"
             onMouseDown={() => setIsResizing(true)}
           />
         </div>
 
-        {/* Sidebar Toggle */}
         <div className="bg-[#1E1E1E] flex flex-col justify-center border-r border-[#3C3C3D]">
           <button 
-            className="h-10 w-4 flex items-center justify-center hover:bg-[#3C3C3C] text-gray-500"
+            className="h-10 w-4 flex items-center justify-center hover:bg-[#3C3C3C] text-gray-500 transition-colors"
             onClick={() => setSidebarOpen(!isSidebarOpen)}
           >
             {isSidebarOpen ? <ChevronLeft size={16}/> : <ChevronRight size={16}/>}
           </button>
         </div>
 
-        {/* Main Panel */}
         <div className="flex-1 flex flex-col min-w-0">
           
-          {/* Toolbar */}
           <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#3C3C3D]">
             <div className="flex items-center space-x-2">
               <button 
-                className="flex items-center px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm shadow transition-colors"
+                className="flex items-center px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm shadow transition-all active:scale-95"
                 onClick={handleOpenFile}
               >
                 <FolderOpen size={16} className="mr-2" /> Open File
               </button>
               <button 
-                className="flex items-center px-2 py-1 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow transition-colors"
+                className="flex items-center px-2 py-1 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow transition-all active:scale-90"
                 onClick={() => setPathModalOpen(true)}
                 title="Open by path"
               >
                 <Plus size={16} />
               </button>
               <button 
-                className="flex items-center px-3 py-1 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow transition-colors disabled:opacity-50"
+                className="flex items-center px-3 py-1 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow transition-all disabled:opacity-50"
                 onClick={handleRefresh}
-                disabled={!store.activeFilePath || refreshing}
+                disabled={!store.activeFilePath || isReloading}
               >
-                <RefreshCw size={14} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} /> Refresh
+                <RefreshCw size={14} className={`mr-2 ${isReloading ? 'animate-spin' : ''}`} /> Refresh
               </button>
               <select
-                className="bg-[#3C3C3C] px-2 py-1 ml-2 rounded text-sm text-gray-200 border-none outline-none focus:ring-1 ring-blue-500"
+                className="bg-[#3C3C3C] px-2 py-1 ml-2 rounded text-sm text-gray-200 border-none outline-none focus:ring-1 ring-blue-500 cursor-pointer"
                 value={config.encoding}
                 onChange={handleEncodingChange}
               >
                 <option value="Auto">Auto Detect</option>
-                <option value="UTF-8">UTF-8</option>
-                <option value="Shift_JIS">Shift_JIS (MS932)</option>
-                <option value="EUC-JP">EUC-JP</option>
-                <option value="UTF-16LE">UTF-16LE</option>
-                <option value="Windows-1252">Windows-1252</option>
+                <optgroup label="Japanese">
+                  <option value="Shift_JIS">Shift_JIS (Japanese)</option>
+                  <option value="EUC-JP">EUC-JP</option>
+                </optgroup>
+                <optgroup label="Unicode">
+                  <option value="UTF-8">UTF-8</option>
+                  <option value="UTF-16LE">UTF-16LE</option>
+                </optgroup>
+                <optgroup label="Other">
+                  <option value="Windows-1252">Windows-1252 (Western)</option>
+                </optgroup>
               </select>
             </div>
             
             <div className="flex items-center space-x-3">
-              <span className="text-xs bg-blue-600/20 text-blue-400 px-2 py-1 rounded font-mono">
-                {allFilteredLogs.length} Total
+              <span className="text-[11px] bg-blue-600/10 text-blue-400 border border-blue-400/20 px-2 py-0.5 rounded font-mono">
+                {allFilteredLogs.length} Records
               </span>
               <button 
-                className="flex items-center px-3 py-1 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow disabled:opacity-50 transition-colors"
+                className="flex items-center px-3 py-1 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow disabled:opacity-50 transition-all font-medium"
                 onClick={() => store.setFilterModalOpen(true)}
                 disabled={!store.activeFilePath}
               >
                 <Filter size={14} className="mr-2" /> Filter
               </button>
               <button 
-                className="flex items-center px-3 py-1 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow transition-colors"
+                className="flex items-center px-3 py-1 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow transition-all"
                 onClick={() => store.toggleSortOrder()}
                 title="Toggle Time Sort Order"
               >
-                <ArrowDownUp size={14} className="mr-2" />
+                <ArrowDownUp size={14} className="mr-2 text-blue-400" />
                 {store.sortOrder === 'asc' ? 'Oldest First' : 'Newest First'}
               </button>
               <button 
-                className="p-1.5 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded shadow transition-colors"
+                className="p-1.5 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded shadow transition-all"
                 onClick={() => setSettingsOpen(true)}
-                title="Application Settings"
+                title="Settings"
               >
                 <Settings size={16} />
               </button>
             </div>
           </div>
 
-          {/* Active Filters Bar */}
           {store.filters.length > 0 && store.activeFilePath && (
             <div className="flex items-center bg-[#1E1E1E] px-4 py-2 border-b border-[#3C3C3D] overflow-x-auto space-x-2 scrollbar-hide">
-              <span className="text-xs text-gray-400 mr-2 flex-shrink-0">Active Filters:</span>
+              <span className="text-[10px] uppercase font-bold text-gray-500 mr-2 flex-shrink-0">Active Filters:</span>
               {store.filters.map(f => (
-                <div key={f.id} className="flex items-center bg-[#3C3C3C] text-xs px-2 py-1 rounded whitespace-nowrap">
-                  <span className="text-blue-400 mr-1">{f.type}</span>
-                  <span className="text-gray-400 mr-1">{f.operator.replace('_', ' ')}:</span>
+                <div key={f.id} className="flex items-center bg-[#3C3C3C] text-[11px] px-2 py-0.5 rounded border border-[#444] shadow-sm">
+                  <span className="text-blue-400 mr-1 opacity-80">{f.type}:</span>
                   <span className="font-mono text-gray-200">{f.value}</span>
-                  <button onClick={() => store.removeFilter(f.id)} className="ml-2 hover:text-white text-gray-400">
+                  <button onClick={() => store.removeFilter(f.id)} className="ml-1.5 hover:text-white text-gray-500">
                     <X size={12}/>
                   </button>
                 </div>
               ))}
               <div className="flex-1" />
               <button 
-                className="text-xs text-red-400 hover:text-red-300 ml-4 flex-shrink-0"
+                className="text-xs text-gray-500 hover:text-red-400 transition-colors"
                 onClick={() => store.clearAllFilters()}
               >
-                Clear All
+                Reset All
               </button>
             </div>
           )}
 
-          {/* Table Header */}
-          <div className="flex items-center bg-[#252526] text-gray-300 text-xs font-semibold uppercase tracking-wider py-2 pr-4 border-b border-[#3C3C3D]">
-            <div className="w-[160px] px-4">Timestamp</div>
+          <div className="flex items-center bg-[#252526] text-gray-500 text-[10px] font-bold uppercase tracking-widest py-2 pr-4 border-b border-[#3C3C3D]">
+            <div className="w-[160px] pl-4">Timestamp</div>
             <div className="w-[200px] px-2">DAO</div>
-            <div className="flex-1 px-2">Reconstructed SQL Query</div>
+            <div className="flex-1 px-2">SQL Query</div>
             <div className="w-[80px] text-center">Actions</div>
           </div>
 
-          {/* Table Content (Virtualized) */}
-          <div ref={parentRef} className="flex-1 overflow-y-auto" style={{ height: "100%" }}>
+          <div ref={parentRef} className="flex-1 overflow-y-auto">
             {!store.activeFilePath ? (
-              <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                <Database size={48} className="mb-4 opacity-50" />
-                <p className="text-lg">Select a log file to view SQL queries</p>
+              <div className="flex flex-col items-center justify-center h-full text-gray-500 opacity-40 italic">
+                <Database size={48} className="mb-4" />
+                <p className="text-lg">Open a log file to extract SQL queries</p>
               </div>
-            ) : visibleLogs.length === 0 ? (
-               <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                <Database size={48} className="mb-4 opacity-50" />
-                <p className="text-lg italic">No SQL queries match the current filters.</p>
+            ) : allFilteredLogs.length === 0 ? (
+               <div className="flex flex-col items-center justify-center h-full text-gray-500 opacity-40 space-y-3">
+                <Database size={48} />
+                <div className="text-center">
+                  <p className="text-lg font-medium">No results found</p>
+                  <p className="text-xs max-w-xs mt-1">Adjust filters or ensure file contains <code className="bg-[#333] px-1 rounded mx-1">Daoの開始</code> markers.</p>
+                </div>
               </div>
             ) : (
               <div style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
                 {virtualizer.getVirtualItems().map((vRow) => {
                   const log = visibleLogs[vRow.index];
+                  if (!log) return null;
                   return (
                     <div
                       key={vRow.key}
                       data-index={vRow.index}
                       ref={virtualizer.measureElement}
-                      className="absolute top-0 left-0 w-full flex border-b border-[#2C2C2D] group hover:bg-[#2A2D2E] transition-colors py-2"
-                      style={{ transform: `translateY(${vRow.start}px)` }}
+                      className="absolute top-0 left-0 w-full flex border-b border-[#2C2C2D] group hover:bg-[#2A2D2E] transition-colors items-stretch"
+                      style={{ transform: `translateY(${vRow.start}px)`, minHeight: 48 }}
                     >
-                      <div className="w-[160px] px-4 font-mono text-xs text-gray-500 flex-shrink-0 pt-1">
+                      <div className="w-[160px] pl-4 py-2 font-mono text-[11px] text-gray-500 flex-shrink-0">
                         {log.timestamp}
                       </div>
-                      <div className="w-[200px] px-2 text-sm text-[#4ECAEA] truncate flex-shrink-0 pt-1" title={log.daoName}>
+                      <div className="w-[200px] px-2 py-2 text-sm text-[#4ECAEA] truncate flex-shrink-0" title={log.daoName}>
                         {log.daoName}
                       </div>
                       <div 
-                        className={`flex-1 px-2 font-mono text-xs text-[#CE9178] cursor-pointer hover:underline underline-offset-2 ${config.sqlSingleLine ? 'whitespace-nowrap overflow-x-auto scrollbar-hide py-1' : 'whitespace-pre-wrap break-all'}`}
+                        className={`flex-1 px-2 py-2 font-mono text-xs text-[#CE9178] cursor-pointer hover:underline underline-offset-2 overflow-hidden ${config.sqlSingleLine ? 'whitespace-nowrap truncate' : 'whitespace-pre-wrap break-all'}`}
                         onClick={() => store.setFormatterModalOpen(true, log.reconstructedSql)}
                       >
                         {log.reconstructedSql}
                       </div>
-                      <div className="w-[80px] flex justify-center flex-shrink-0 pt-1">
+                      <div className="w-[80px] flex justify-center py-2 flex-shrink-0">
                         <button 
                           onClick={() => copySql(log.reconstructedSql || '', log.logIndex)}
-                          className={`p-1.5 rounded transition ${copiedId === log.logIndex ? 'text-green-400 bg-green-400/10' : 'text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-[#3A3D41] hover:text-white'}`}
+                          className={`p-1.5 rounded transition-all h-8 w-8 flex items-center justify-center ${copiedId === log.logIndex ? 'text-green-400 bg-green-400/10' : 'text-gray-600 opacity-0 group-hover:opacity-100 hover:bg-[#3A3D41] hover:text-white'}`}
                           title="Copy SQL"
                         >
                           {copiedId === log.logIndex ? <Check size={16}/> : <Copy size={16}/>}
@@ -376,7 +422,6 @@ export function SqlLogParser() {
             )}
           </div>
 
-          {/* Boxed Pagination Footer */}
           {totalPages > 1 && (
             <div className="flex items-center justify-center p-3 bg-[#252526] border-t border-[#3C3C3D]">
               <div className="flex items-center justify-between w-full max-w-md">
@@ -400,14 +445,9 @@ export function SqlLogParser() {
                     } else {
                       pages.push(1);
                       if (current > 3) pages.push('...');
-                      
                       const start = Math.max(2, current - 1);
                       const end = Math.min(total - 1, current + 1);
-                      
-                      for (let i = start; i <= end; i++) {
-                        if (!pages.includes(i)) pages.push(i);
-                      }
-                      
+                      for (let i = start; i <= end; i++) pages.push(i);
                       if (current < total - 2) pages.push('...');
                       pages.push(total);
                     }
@@ -447,26 +487,23 @@ export function SqlLogParser() {
         </div>
       </div>
 
-      {/* Footer */}
       <StatusBar 
-        activeFileName={store.files.find(f => f.path === store.activeFilePath)?.alias || store.activeFilePath?.split(/[/\\]/).pop() || ''}
+        activeFileName={activeFile?.alias || (store.activeFilePath?.split(/[/\\]/).pop() || '')}
         activeLanguage="SQL"
-        activeEncoding={config.encoding === 'Auto' ? `Auto (${store.files.find(f => f.path === store.activeFilePath)?.detectedEncoding || 'Detecting...'})` : config.encoding}
+        activeEncoding={config.encoding === 'Auto' ? `Auto (${activeFile?.detectedEncoding || 'Detecting...'})` : config.encoding}
         isCompareMode={false}
         onLanguageChange={() => {}}
         onEncodingChange={(enc) => config.updateConfig({ encoding: enc })}
       />
 
-      {/* Context Menu */}
       {contextMenu && (
         <div 
-          className="fixed z-50 bg-[#252526] border border-[#454545] rounded shadow-lg py-1 w-40 text-sm"
+          className="fixed z-[60] bg-[#252526] border border-[#454545] rounded shadow-xl py-1 w-40 text-sm animate-in fade-in zoom-in duration-100"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           <div 
-            className="px-4 py-1.5 hover:bg-blue-600 hover:text-white cursor-pointer"
+            className="px-4 py-1.5 hover:bg-blue-600 hover:text-white cursor-pointer transition-colors"
             onClick={() => {
-              if (!contextMenu) return;
               const file = store.files.find(f => f.path === contextMenu.path);
               store.setAliasModalProps({
                 isOpen: true,
@@ -474,18 +511,19 @@ export function SqlLogParser() {
                 initialValue: file?.alias || '',
                 onSave: (val) => store.setAlias(contextMenu.path, val)
               });
+              setContextMenu(null);
             }}
           >Set Alias</div>
           <div 
-            className="px-4 py-1.5 text-red-400 hover:bg-red-600 hover:text-white cursor-pointer"
+            className="px-4 py-1.5 text-red-400 hover:bg-red-600 hover:text-white cursor-pointer transition-colors"
             onClick={() => {
-              if (contextMenu) store.removeFile(contextMenu.path);
+              store.removeFile(contextMenu.path);
+              setContextMenu(null);
             }}
           >Remove</div>
         </div>
       )}
 
-      {/* Modals */}
       <FilterModal 
         isOpen={store.isFilterModalOpen} 
         onClose={() => store.setFilterModalOpen(false)} 

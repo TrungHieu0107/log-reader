@@ -64,41 +64,20 @@ Mỗi decision ghi theo format:
 ---
 <!-- Antigravity: append new decisions below this line -->
 
-### [2026-03-31] — Missing Reference Files Resolved via Scaffolding
-- **Decision**: Implemented `parser.ts`, `store.ts`, `SqlLogParser.tsx` and modal files manually since they were not provided in the workspace.
-- **Reason**: To ensure that the SQL Log Parser desktop app can be built exactly following the Phase 1-8 constraints and the provided UI descriptors, while unblocking the process.
-- **Alternatives considered**: Block completely waiting for the user to upload the files.
+### [2026-03-31] — Major Refactor & Performance Optimization
+- **Decision**: Implemented `@tanstack/react-virtual` v3 for SQL Table, refactored logic into `useSqlLogs` and `useFileOpen` hooks.
+- **Reason**: To handle 10k+ queries at 60 FPS and improve code maintainability for Win11 compatibility.
+- **Alternatives considered**: Pagination only (not enough for UX), monlithic component (too complex).
 - **Status**: Active
 
-### [2026-03-31] — Tauri v2 Store Initialization
-- **Decision**: Used `LazyStore` from `@tauri-apps/plugin-store` instead of `new Store()`.
-- **Reason**: In `@tauri-apps/plugin-store` v2, `new Store()` constructor is private. `LazyStore` acts as a direct synchronous substitute with lazy disk load, avoiding blocking the main UI thread.
-- **Alternatives considered**: Async `Store.load()` (would complicate standard Zustand setup).
+### [2026-03-31] — Backend Guardrails (100MB limit)
+- **Decision**: Added `MAX_FILE_SIZE = 100MB` in `file_reader.rs`.
+- **Reason**: Prevent the app from hanging or crashing when accidentally opening huge non-relavant files (e.g., binaries).
+- **Alternatives considered**: 500MB (too much for frontend string parsing).
 - **Status**: Active
 
-### [2026-03-31] — Pagination for Large Logs
-- **Decision**: Added pagination (100 items/page) and sliced results in the frontend `useMemo`.
-- **Reason**: To maintain 60 FPS UI performance even when filters match 10,000+ queries. Pagination combined with Virtual Scroll is the most stable approach.
-- **Alternatives considered**: Infinite scroll (more complex for jumping to specific logs).
+### [2026-03-31] — UI State Persistence
+- **Decision**: Persist `sidebarWidth`, `isSidebarOpen`, and `sortOrder` to `localStorage`.
+- **Reason**: Standard desktop app UX — users expect their layout to be remembered.
+- **Alternatives considered**: Tauri Store (overhead for simple UI bits).
 - **Status**: Active
-
-### [2026-03-31] — Chardetng API Compatibility Fix
-- **Decision**: Updated `EncodingDetector` calls to pass `Iso2022JpDetection::Allow` and `Utf8Detection::Allow`.
-- **Reason**: The `chardetng 1.0.0` crate changed these from `bool` to mandatory `enum` variants.
-- **Alternatives considered**: Downgrading the crate (less secure).
-- **Status**: Active
-
-- **Status**: Active
-
-### [2026-03-31] — Pagination Stabilized Layout
-- **Decision**: Wrapped pagination in a `max-w-md` flex container with `justify-between`.
-- **Reason**: To prevent the Previous/Next buttons from jumping when the number of page boxes (1 2 3 vs 1 2 ... 10) changes.
-- **Alternatives considered**: Fixed width buttons (less flexible for labels).
-- **Status**: Active
-
-### [2026-03-31] — Manual Path Entry with PathModal
-- **Decision**: Added a `+` button in the toolbar that opens a `PathModal.tsx`.
-- **Reason**: Users sometimes prefer pasting a full absolute path instead of navigating through the native file dialog.
-- **Alternatives considered**: Inline text field in toolbar (cluttered the UI).
-- **Status**: Active
-

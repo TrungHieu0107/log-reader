@@ -4,6 +4,8 @@ use std::io::{Read, Seek, SeekFrom};
 use encoding_rs::*;
 use chardetng::{EncodingDetector, Iso2022JpDetection, Utf8Detection};
 
+const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024; // 100MB
+
 #[derive(Serialize)]
 pub struct FileReadResponse {
     content: Option<String>,
@@ -12,15 +14,54 @@ pub struct FileReadResponse {
     error: Option<String>,
 }
 
+fn is_binary(bytes: &[u8]) -> bool {
+    // UTF-16 BOM check — not binary
+    if bytes.starts_with(&[0xFF, 0xFE]) || bytes.starts_with(&[0xFE, 0xFF]) {
+        return false;
+    }
+    // Check first 8KB for null bytes
+    let check_len = bytes.len().min(8192);
+    bytes[..check_len].contains(&0)
+}
+
 #[tauri::command]
 pub fn read_file_encoded(path: String, encoding: String) -> Result<FileReadResponse, String> {
-    let mut file = match File::open(&path) {
+    // 1.1 Path Normalization (Win11 fix)
+    // Handle both `\\?\` prefix and standard absolute paths
+    let clean_path = path
+        .trim_start_matches(r"\\?\")
+        .replace('\\', "/");
+
+    // 1.4 Large File Guard
+    let metadata = match std::fs::metadata(&clean_path) {
+        Ok(m) => m,
+        Err(e) => return Ok(FileReadResponse {
+            content: None,
+            is_binary: false,
+            detected_encoding: None,
+            error: Some(format!("Could not access file: {}", e)),
+        }),
+    };
+
+    if metadata.len() > MAX_FILE_SIZE {
+        return Ok(FileReadResponse {
+            content: None,
+            is_binary: false,
+            detected_encoding: None,
+            error: Some(format!(
+                "File too large ({:.1} MB). Maximum supported size is 100 MB.",
+                metadata.len() as f64 / 1_048_576.0
+            )),
+        });
+    }
+
+    let mut file = match File::open(&clean_path) {
         Ok(f) => f,
         Err(e) => return Ok(FileReadResponse {
             content: None,
             is_binary: false,
             detected_encoding: None,
-            error: Some(e.to_string()),
+            error: Some(format!("Failed to open file: {}", e)),
         }),
     };
 
@@ -35,7 +76,8 @@ pub fn read_file_encoded(path: String, encoding: String) -> Result<FileReadRespo
         }),
     };
 
-    if buffer[..bytes_read].contains(&0) {
+    // 1.3 Binary Detection Improvement
+    if is_binary(&buffer[..bytes_read]) {
         return Ok(FileReadResponse {
             content: None,
             is_binary: true,
@@ -63,23 +105,25 @@ pub fn read_file_encoded(path: String, encoding: String) -> Result<FileReadRespo
         });
     }
 
+    // 1.2 Encoding Aliases
     let (encoder, detected_name): (&'static Encoding, Option<String>) = if encoding == "Auto" {
         let mut detector = EncodingDetector::new(Iso2022JpDetection::Allow);
         detector.feed(&buffer[..bytes_read], bytes_read < 8192);
         let top_encoding = detector.guess(None, Utf8Detection::Allow);
         (top_encoding, Some(top_encoding.name().to_string()))
     } else {
-        let enc = match encoding.as_str() {
-            "Shift_JIS" | "SJIS" | "MS932" => SHIFT_JIS,
-            "EUC-JP" => EUC_JP,
-            "UTF-16LE" => UTF_16LE,
-            "Windows-1252" => WINDOWS_1252,
-            "UTF-8" => UTF_8,
+        let enc = match encoding.to_uppercase().as_str() {
+            "UTF-8" | "UTF8" => UTF_8,
+            "SHIFT_JIS" | "SHIFT-JIS" | "SJIS" | "MS932" | "CP932" | "WINDOWS-31J" => SHIFT_JIS,
+            "EUC-JP" | "EUCJP" => EUC_JP,
+            "UTF-16LE" | "UTF16LE" => UTF_16LE,
+            "UTF-16BE" | "UTF16BE" => UTF_16BE,
+            "WINDOWS-1252" | "CP1252" => WINDOWS_1252,
             _ => return Ok(FileReadResponse {
                 content: None,
                 is_binary: false,
                 detected_encoding: None,
-                error: Some(format!("Unknown encoding: {}", encoding)),
+                error: Some(format!("Unsupported encoding: {}", encoding)),
             })
         };
         (enc, None)
@@ -95,3 +139,4 @@ pub fn read_file_encoded(path: String, encoding: String) -> Result<FileReadRespo
         error: None,
     })
 }
+

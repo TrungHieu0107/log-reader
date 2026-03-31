@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { LazyStore } from '@tauri-apps/plugin-store';
 import { DaoSession, parseSqlLogs } from './parser';
 import { useConfigStore } from '../../components/configStore';
+import { FileReadResponse } from '../../types/tauri';
 
 export interface Filter {
   id: string;
@@ -138,7 +139,7 @@ export const useSqlLogStore = create<SqlLogState>((set, get) => ({
     const trimEnabled = useConfigStore.getState().trimSql;
     for (const f of saved) {
       try {
-        const res = await invoke<{content: string | null, is_binary: boolean, detected_encoding?: string, error: string | null}>('read_file_encoded', {
+        const res: FileReadResponse = await invoke('read_file_encoded', {
           path: f.path, encoding
         });
         if (res.content) {
@@ -146,7 +147,7 @@ export const useSqlLogStore = create<SqlLogState>((set, get) => ({
             path: f.path, 
             alias: f.alias, 
             sessions: parseSqlLogs(res.content, { trimSql: trimEnabled }),
-            detectedEncoding: res.detected_encoding
+            detectedEncoding: res.detected_encoding || undefined
           });
         }
       } catch (err) {
@@ -160,14 +161,15 @@ export const useSqlLogStore = create<SqlLogState>((set, get) => ({
     const state = get();
     if (!state.activeFilePath) return;
     try {
-      const res = await invoke<{content: string | null, is_binary: boolean, detected_encoding?: string, error: string | null}>('read_file_encoded', {
+      const res: FileReadResponse = await invoke('read_file_encoded', {
         path: state.activeFilePath, encoding
       });
       if (res.content) {
-         state.addFile(state.activeFilePath, res.content, res.detected_encoding);
+         state.addFile(state.activeFilePath, res.content, res.detected_encoding || undefined);
       }
     } catch (err) {
       console.error(err);
     }
   }
 }));
+
