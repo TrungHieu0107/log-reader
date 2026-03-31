@@ -16,7 +16,7 @@ SQL Log Parser
 | encoding_rs (Rust) | 0.8.x | Reading multi-encoding text |
 | chardetng (Rust) | 1.0.0 | Auto-detect File Encoding (Iso2022JpDetect::Allow) |
 | @tauri-apps/plugin-store | 2.x | Native JSON KV persistence |
-| @tanstack/react-virtual| 3.x | Virtualized Log List |
+| web-worker | native | Background Log Parsing |
 
 
 ## Architecture Overview
@@ -24,7 +24,7 @@ SQL Log Parser
 React UI
   ├── Sidebar — File list, clear all
   ├── Toolbar — Open, Refresh, Encoding, Filter, Sort
-  ├── Logs Table — Virtualized representation of SQL Logs
+  ├── Logs Table — Paginated direct rendering (Max 1000 items)
   ├── StatusBar — Active file, Encoding info
   └── Modals — AliasModal, FilterModal, SqlFormatterModal, SettingsModal, PathModal
 
@@ -64,6 +64,7 @@ sql-log-parser/
 │           ├── SqlLogParser.tsx
 │           ├── store.ts
 │           ├── parser.ts
+│           ├── parser.worker.ts — Background parsing logic
 │           ├── FilterModal.tsx
 │           ├── AliasModal.tsx
 │           ├── SqlFormatterModal.tsx

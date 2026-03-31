@@ -6,9 +6,11 @@ import { FilterModal } from './FilterModal';
 import { AliasModal } from './AliasModal';
 import { SqlFormatterModal } from './SqlFormatterModal';
 import { invoke } from '@tauri-apps/api/core';
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { 
   FolderOpen, RefreshCw, Filter, ArrowDownUp, 
-  Copy, Check, Database, FileText, ChevronLeft, ChevronRight, X, Settings, Plus, Clock
+  Copy, Check, Database, FileText, ChevronLeft, ChevronRight, X, Settings, Plus, Clock,
+  Folder, Trash2
 } from 'lucide-react';
 import { SettingsModal } from './SettingsModal';
 import { PathModal } from './PathModal';
@@ -267,6 +269,27 @@ export function SqlLogParser() {
     setContextMenu({ path, x, y });
   };
 
+  const handleClearContent = async (path: string) => {
+    if (window.confirm("Are you sure you want to clear the content of this file? This action is permanent.")) {
+      try {
+        await store.clearFileContent(path);
+        if (store.activeFilePath === path) {
+          handleRefresh();
+        }
+      } catch (err) {
+        setErrorMessage("Failed to clear file content.");
+      }
+    }
+  };
+
+  const handleOpenInExplorer = async (path: string) => {
+    try {
+      await revealItemInDir(path);
+    } catch (err) {
+      setErrorMessage("Failed to open explorer at: " + path);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden text-[#D4D4D4] bg-[#1E1E1E]">
       
@@ -336,24 +359,33 @@ export function SqlLogParser() {
           <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#3C3C3D]">
             <div className="flex items-center space-x-2">
               <button 
-                className="flex items-center px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm shadow transition-all active:scale-95"
+                className="flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-bold shadow-lg transition-all"
                 onClick={handleOpenFile}
               >
-                <FolderOpen size={16} className="mr-2" /> Open File
+                <FolderOpen size={16} className="mr-2" /> Open Log File
               </button>
               <button 
-                className="flex items-center px-2 py-1 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow transition-all active:scale-90"
+                className="flex items-center px-2 py-2 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow transition-all active:scale-90"
                 onClick={() => setPathModalOpen(true)}
                 title="Open by path"
               >
                 <Plus size={16} />
               </button>
               <button 
-                className="flex items-center px-3 py-1 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow transition-all disabled:opacity-50"
+                className="flex items-center px-3 py-2 bg-[#3C3C3C] hover:bg-[#4D4D4D] text-white rounded text-sm shadow transition-all"
                 onClick={handleRefresh}
-                disabled={!store.activeFilePath || isReloading}
+                title="Refresh / Reload Files"
+                disabled={isReloading || store.files.length === 0}
               >
-                <RefreshCw size={14} className={`mr-2 ${isReloading ? 'animate-spin' : ''}`} /> Refresh
+                <RefreshCw size={16} className={isReloading ? 'animate-spin' : ''} />
+              </button>
+              <button 
+                className="flex items-center px-3 py-2 bg-[#3C3C3C] hover:bg-red-600/20 text-red-400 border border-red-900/20 rounded text-sm shadow transition-all"
+                onClick={() => store.activeFilePath && handleClearContent(store.activeFilePath)}
+                title="Clear File Content (Disk Overwrite)"
+                disabled={isReloading || !store.activeFilePath}
+              >
+                <Trash2 size={16} />
               </button>
               <select
                 className="bg-[#3C3C3C] px-2 py-1 ml-2 rounded text-sm text-gray-200 border-none outline-none focus:ring-1 ring-blue-500 cursor-pointer"
@@ -632,29 +664,55 @@ export function SqlLogParser() {
 
       {contextMenu && (
         <div 
-          className="fixed z-[60] bg-[#252526] border border-[#454545] rounded shadow-xl py-1 w-40 text-sm animate-in fade-in zoom-in duration-100"
+          className="fixed z-[60] bg-[#252526] border border-[#454545] rounded shadow-xl py-1 w-48 text-sm animate-in fade-in zoom-in duration-100"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           <div 
-            className="px-4 py-1.5 hover:bg-blue-600 hover:text-white cursor-pointer transition-colors"
+            className="px-4 py-1.5 hover:bg-[#3C3C3C] cursor-pointer transition-colors flex items-center gap-2"
             onClick={() => {
               const file = store.files.find(f => f.path === contextMenu.path);
               store.setAliasModalProps({
                 isOpen: true,
                 filePath: contextMenu.path,
                 initialValue: file?.alias || '',
-                onSave: (val) => store.setAlias(contextMenu.path, val)
+                onSave: (alias) => store.setAlias(contextMenu.path, alias)
               });
               setContextMenu(null);
             }}
-          >Set Alias</div>
+          >
+            <FileText size={14} className="text-blue-400" />
+            <span>Set Alias</span>
+          </div>
           <div 
-            className="px-4 py-1.5 text-red-400 hover:bg-red-600 hover:text-white cursor-pointer transition-colors"
+            className="px-4 py-1.5 hover:bg-[#3C3C3C] cursor-pointer transition-colors flex items-center gap-2 border-t border-[#3C3C3D]"
+            onClick={() => {
+              handleOpenInExplorer(contextMenu.path);
+              setContextMenu(null);
+            }}
+          >
+            <Folder size={14} className="text-orange-400" />
+            <span>Open in Explorer</span>
+          </div>
+          <div 
+            className="px-4 py-1.5 hover:bg-red-600/20 text-red-400 cursor-pointer transition-colors flex items-center gap-2 border-t border-[#3C3C3D]"
+            onClick={() => {
+              handleClearContent(contextMenu.path);
+              setContextMenu(null);
+            }}
+          >
+            <Trash2 size={14} />
+            <span>Clear Content</span>
+          </div>
+          <div 
+            className="px-4 py-1.5 text-gray-500 hover:bg-red-600 hover:text-white cursor-pointer transition-colors flex items-center gap-2 border-t border-[#3C3C3D]"
             onClick={() => {
               store.removeFile(contextMenu.path);
               setContextMenu(null);
             }}
-          >Remove</div>
+          >
+            <X size={14} />
+            <span>Remove</span>
+          </div>
         </div>
       )}
 

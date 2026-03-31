@@ -31,6 +31,12 @@
 - Portable `.exe` (không cần install) là nice-to-have
 - **Persistence**: Tất cả cấu hình (Encoding, Trim SQL, Chế độ xem) phải được lưu lại sau khi tắt app.
 - **File Opening**: Hỗ trợ cả chọn file qua Dialog và nhập đường dẫn tuyệt đối (Manual Path).
+- **UI/UX**: 
+  - Ưu tiên hiển thị thông tin dày đặc (Information Density) — dùng layout 2 cột cho các modal phức tạp.
+  - Phụ thuộc nhiều vào bàn phím (Keyboard-centric) — luôn hỗ trợ Global Shortcuts (Alt+S, Ctrl+O, Ctrl+F, v.v.).
+- **Rendering**: 
+  - Ưu tiên hiển thị **toàn bộ dữ liệu của 1 trang (Paginated)** vào DOM cùng lúc.
+  - Không dùng Virtualization cho kết quả đã phân trang (để hỗ trợ `Ctrl+F` của trình duyệt và cuộn tự nhiên).
 
 ## Tool Preferences
 - IDE: đang dùng cả Eclipse (legacy Java) và VSCode/Cursor (new projects)
@@ -38,4 +44,4 @@
 - Build script: `.bat` file, không dùng Makefile hay shell script
 
 ---
-<!-- Antigravity: update this file nếu user thể hiện preference mới trong session -->
+<!-- Antigravity: update this file nếu user thể hiện preference mới trong session -->

@@ -31,11 +31,9 @@ Mỗi decision ghi theo format:
 - **Alternatives considered**: Global static (unsafe), thread channel (phức tạp hơn)
 - **Status**: Active
 
-### [2026-03-30] — Virtual scroll bắt buộc với @tanstack/react-virtual v3
-- **Decision**: Dùng `useVirtualizer` từ `@tanstack/react-virtual` v3, không render raw list
-- **Reason**: Log file có thể có 100k+ dòng — render toàn bộ sẽ freeze UI
-- **Alternatives considered**: `react-window` (ít maintained hơn), `react-virtuoso` (overhead lớn hơn)
-- **Status**: Active
+### [2026-03-30] — Virtual scroll (Superseded)
+- **Decision**: Dùng `useVirtualizer` từ `@tanstack/react-virtual` v3
+- **Status**: Superseded by [2026-03-31 — Incremental Background Parsing & Pagination]
 
 ### [2026-03-30] — Cấu hình thư mục build (target) hoàn toàn tách biệt
 - **Decision**: Cập nhật file `src-tauri/.cargo/config.toml` set `target-dir = "C:/Users/Administrator/appdata/local/temp/log-reader-target"` (Đường dẫn tuyệt đối bên ngoài).
@@ -64,10 +62,16 @@ Mỗi decision ghi theo format:
 ---
 <!-- Antigravity: append new decisions below this line -->
 
-### [2026-03-31] — Major Refactor & Performance Optimization
-- **Decision**: Implemented `@tanstack/react-virtual` v3 for SQL Table, refactored logic into `useSqlLogs` and `useFileOpen` hooks.
-- **Reason**: To handle 10k+ queries at 60 FPS and improve code maintainability for Win11 compatibility.
-- **Alternatives considered**: Pagination only (not enough for UX), monlithic component (too complex).
+### [2026-03-31] — Incremental Background Parsing & Pagination
+- **Decision**: Use Web Worker (`parser.worker.ts`) for background log processing and replace virtualization with a `pageSize` (50, 100, 200, 500, 1000) based direct rendering. Render 'Page 1' immediately.
+- **Reason**: Handhelds the case for 1GB+ files while providing better searchability (Ctrl+F) and smoother UX for paginated chunks than complex virtual scrolls.
+- **Alternatives considered**: Backend-only parsing (too many IPC calls), simple virtualization (bad native search).
+- **Status**: Active
+
+### [2026-03-31] — Global Keyboard Shortcuts & 2-Col Layout
+- **Decision**: Redesigned Settings Modal into a professional 2-column layout (Settings | Guide) and implemented global listeners for Alt+S, Ctrl+O, Ctrl+F, Ctrl+R, F5, Esc.
+- **Reason**: Standard desktop app UX where users expect productivity shortcuts and easy-to-read help right in the settings area.
+- **Alternatives considered**: Command Palette (too complex for this MVP), simple list (too long).
 - **Status**: Active
 
 ### [2026-03-31] — Backend Guardrails (100MB limit)

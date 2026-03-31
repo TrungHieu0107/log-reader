@@ -62,6 +62,7 @@ interface SqlLogState {
 
   reloadFiles: (encoding: string) => Promise<void>;
   reloadActiveFile: (encoding: string) => Promise<void>;
+  clearFileContent: (path: string) => Promise<void>;
 }
 
 const db = new LazyStore('sql_log_files.json');
@@ -244,6 +245,22 @@ export const useSqlLogStore = create<SqlLogState>((set, get) => ({
       }
     } catch (err) {
       console.error(err);
+    }
+  },
+
+  clearFileContent: async (path: string) => {
+    try {
+      await invoke('clear_file_content', { path });
+      set((state) => {
+        const newFiles = state.files.map(f => f.path === path ? { ...f, sessions: [] } : f);
+        return { 
+          files: newFiles,
+          page: state.activeFilePath === path ? 1 : state.page
+        };
+      });
+    } catch (err) {
+      console.error("Failed to clear file:", err);
+      throw err;
     }
   }
 }));

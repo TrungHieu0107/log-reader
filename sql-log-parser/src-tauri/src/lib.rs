@@ -14,7 +14,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             greet,
-            file_reader::read_file_encoded
+            file_reader::read_file_encoded,
+            file_reader::clear_file_content
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

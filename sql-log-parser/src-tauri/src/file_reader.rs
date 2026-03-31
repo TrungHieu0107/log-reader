@@ -139,4 +139,14 @@ pub fn read_file_encoded(path: String, encoding: String) -> Result<FileReadRespo
         error: None,
     })
 }
+#[tauri::command]
+pub fn clear_file_content(path: String) -> Result<(), String> {
+    let clean_path = path
+        .trim_start_matches(r"\\?\")
+        .replace('\\', "/");
 
+    match std::fs::write(&clean_path, "") {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("Failed to clear file {}: {}", clean_path, e)),
+    }
+}
