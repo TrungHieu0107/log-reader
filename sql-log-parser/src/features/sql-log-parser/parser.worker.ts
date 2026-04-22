@@ -18,6 +18,7 @@ self.onmessage = (e: MessageEvent<WorkerOptions>) => {
   const lines = content.split('\n');
   const sessions: DaoSession[] = [];
   let currentSession: DaoSession | null = null;
+  const sessionStack: DaoSession[] = [];
   const activeSqls = new Map<string, string>();
   const globalSqlMap = new Map<string, string>();
   
@@ -34,11 +35,21 @@ self.onmessage = (e: MessageEvent<WorkerOptions>) => {
       const daoName = daoStartMatch[1].trim().split('.').pop() || "UnknownDao";
       currentSession = { daoName, logs: [] };
       sessions.push(currentSession);
+      sessionStack.push(currentSession);
+    } else {
+      const daoEndMatch = line.match(/Daoの終了(.*?)(?:\s|$)/);
+      if (daoEndMatch) {
+        if (sessionStack.length > 0) {
+          sessionStack.pop();
+        }
+        currentSession = sessionStack.length > 0 ? sessionStack[sessionStack.length - 1] : null;
+      }
     }
 
     if (!currentSession) {
       currentSession = { daoName: "Global", logs: [] };
       sessions.push(currentSession);
+      sessionStack.push(currentSession);
     }
 
     const log: LogEntry = {
@@ -56,6 +67,22 @@ self.onmessage = (e: MessageEvent<WorkerOptions>) => {
       if (options.trimSql) sqlText = trimSqlOutsideQuotes(sqlText);
       activeSqls.set(id, sqlText);
       globalSqlMap.set(id.toLowerCase(), sqlText);
+    }
+
+    const directSqlMatch = line.match(/UseCommand=\s*sql=(.*)/);
+    if (directSqlMatch) {
+      let sqlText = directSqlMatch[1].trim();
+      if (options.trimSql) sqlText = trimSqlOutsideQuotes(sqlText);
+      log.reconstructedSql = sqlText;
+      log.type = 'sql';
+      
+      const uniqIdMatch = line.match(/uniq_id=\((.*?)\)/);
+      if (uniqIdMatch) {
+        log.id = uniqIdMatch[1];
+        globalSqlMap.set(log.id.toLowerCase(), sqlText);
+      }
+      
+      logCount++;
     }
 
     const paramMatch = line.match(/PreparedStatement\.executeQuery\(\) id=([a-f0-9]+)\s+params=(.*)/);

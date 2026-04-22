@@ -26,6 +26,7 @@ export function parseSqlLogs(content: string, options: { trimSql?: boolean } = {
     const lines = content.split('\n');
     const sessions: DaoSession[] = [];
     let currentSession: DaoSession | null = null;
+    const sessionStack: DaoSession[] = [];
 
     // Local state to link SQL with Parameters via id
     const activeSqls = new Map<string, string>();
@@ -44,12 +45,22 @@ export function parseSqlLogs(content: string, options: { trimSql?: boolean } = {
             const daoName = daoStartMatch[1].trim().split('.').pop() || "UnknownDao";
             currentSession = { daoName, logs: [] };
             sessions.push(currentSession);
+            sessionStack.push(currentSession);
+        } else {
+            const daoEndMatch = line.match(/Daoの終了(.*?)(?:\s|$)/);
+            if (daoEndMatch) {
+                if (sessionStack.length > 0) {
+                    sessionStack.pop();
+                }
+                currentSession = sessionStack.length > 0 ? sessionStack[sessionStack.length - 1] : null;
+            }
         }
 
         // If no session started yet, create a dummy global one
         if (!currentSession) {
             currentSession = { daoName: "Global", logs: [] };
             sessions.push(currentSession);
+            sessionStack.push(currentSession);
         }
 
         const log: LogEntry = {
@@ -71,6 +82,23 @@ export function parseSqlLogs(content: string, options: { trimSql?: boolean } = {
             }
             activeSqls.set(id, sqlText);
             globalSqlMap.set(id.toLowerCase(), sqlText);
+        }
+
+        // 3.5 Direct SQL Detection (UseCommand= sql=...)
+        const directSqlMatch = line.match(/UseCommand=\s*sql=(.*)/);
+        if (directSqlMatch) {
+            let sqlText = directSqlMatch[1].trim();
+            if (options.trimSql) {
+                sqlText = trimSqlOutsideQuotes(sqlText);
+            }
+            log.reconstructedSql = sqlText;
+            log.type = 'sql';
+            
+            const uniqIdMatch = line.match(/uniq_id=\((.*?)\)/);
+            if (uniqIdMatch) {
+                log.id = uniqIdMatch[1];
+                globalSqlMap.set(log.id.toLowerCase(), sqlText);
+            }
         }
 
         // 4. Parameter Detection & Reconstruction

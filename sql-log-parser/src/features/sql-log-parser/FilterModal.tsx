@@ -59,7 +59,6 @@ export function FilterModal({ isOpen, onClose }: Props) {
     }
 
     if (!value.trim()) return;
-    if (isRegexMode && regexError) return;
     
     addFilter(type, operator, value.trim(), isRegexMode);
     onClose();
@@ -193,8 +192,13 @@ export function FilterModal({ isOpen, onClose }: Props) {
                 </label>
 
                 {isRegexMode && regexError && (
-                  <div className="flex items-center gap-2 bg-red-900/20 border border-red-700/40 rounded px-3 py-2">
-                    <span className="text-red-400 text-[10px] font-mono break-all">{regexError}</span>
+                  <div className="flex flex-col gap-1 bg-amber-900/20 border border-amber-700/40 rounded px-3 py-2">
+                    <div className="flex items-center gap-1.5 text-amber-500">
+                      <span className="text-[10px] uppercase font-bold tracking-wider">Warning: Invalid Regex</span>
+                    </div>
+                    <span className="text-[10px] text-amber-200/70 font-mono italic break-all leading-relaxed">
+                      {regexError}. Falling back to normal text search.
+                    </span>
                   </div>
                 )}
               </div>
@@ -214,8 +218,7 @@ export function FilterModal({ isOpen, onClose }: Props) {
             onClick={handleAdd}
             disabled={
               (type === 'time_range' && (!timeFrom || !timeTo || timeFrom > timeTo)) ||
-              (type !== 'time_range' && !value.trim()) ||
-              (isRegexMode && !!regexError)
+              (type !== 'time_range' && !value.trim())
             }
           >
             Add Filter

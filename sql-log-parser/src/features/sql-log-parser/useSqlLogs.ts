@@ -48,7 +48,7 @@ export function useSqlLogs(
                 try {
                   return new RegExp(f.value, 'i').test(textValue);
                 } catch {
-                  return false;
+                  return target.includes(search); // Fallback to Method 1 if regex is invalid
                 }
               }
               return target.includes(search);
@@ -58,7 +58,7 @@ export function useSqlLogs(
                 try {
                   return !new RegExp(f.value, 'i').test(textValue);
                 } catch {
-                  return true;
+                  return !target.includes(search); // Fallback to Method 1 if regex is invalid
                 }
               }
               return !target.includes(search);
